@@ -81,30 +81,9 @@ fn validate_markdown_path<P: AsRef<Path>>(
     path: P,
     span: Span,
 ) -> Result<(), proc_macro2::TokenStream> {
-    let mut absoulte_path = match std::env::current_dir() {
-        Ok(dir) => dir,
-        Err(e) => {
-            let compile_error_message = format!("Couldn't get the current directory: {}", e);
-            return Err(quote! {span=>
-                compile_error!(#compile_error_message);
-            });
-        }
-    };
-
-    absoulte_path.push(path.as_ref());
-
-    let parent = match absoulte_path.parent() {
-        Some(parent) => parent,
-        None => {
-            return Err(quote! {span=>
-                compile_error!("The markdown path should point to a file!");
-            });
-        }
-    };
-
-    if !parent.exists() {
+    if !path.as_ref().to_string_lossy().ends_with(".md") {
         return Err(quote_spanned! {span=>
-            compile_error!("The directory doesn't exist");
+            compile_error!("The path should point to a .md file!");
         });
     }
 
