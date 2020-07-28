@@ -4,6 +4,7 @@ use std::{fmt::Display, io, sync};
 #[derive(Debug)]
 pub enum Error {
     InvalidMarkdownFormat,
+    InvalidMarkdownPath,
     IoError(io::Error),
     PoisonedLock,
     InvalidStatusCode,
@@ -36,6 +37,9 @@ impl Display for Error {
             Error::ParseUriError => write!(f, "Parse URI Error"),
             Error::UnknownError => write!(f, "Unknown Servirtium Error"),
             Error::HttpError(e) => write!(f, "Http Error: {}", e),
+            Error::InvalidMarkdownPath => {
+                write!(f, "The markdown path should point to a markdown file")
+            }
         }
     }
 }

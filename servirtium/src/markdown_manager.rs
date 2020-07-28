@@ -66,7 +66,8 @@ impl MarkdownManager {
         request_data: &RequestData,
         response_data: &ResponseData,
     ) -> Result<(), Error> {
-        let mut file = File::create(markdown_path)?;
+        let mut file = File::create(markdown_path.as_ref())?;
+
         write!(
             file,
             "## Interaction 0: {} {}\r\n\r\n",
