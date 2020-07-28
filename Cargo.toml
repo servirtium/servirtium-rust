@@ -1,6 +1,5 @@
 [workspace]
 members = [
     "servirtium",
-    "servirtium-codegen",
-    "example"
+    "servirtium-codegen"
 ]
