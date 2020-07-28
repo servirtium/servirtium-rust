@@ -1,6 +1,8 @@
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::quote;
-use std::{fs, path::Path};
+use quote::quote_spanned;
+use std::path::Path;
 
 #[proc_macro_attribute]
 pub fn servirtium_record_test(attrs: TokenStream, item: TokenStream) -> TokenStream {
@@ -24,34 +26,32 @@ fn servirtium_test(
     let block = &input.block;
 
     let markdown_name: String;
-    let domain_name: String;
 
     if args.len() < 2 {
-        let error = quote! {
-            compile_error!("A markdown name and a domain name should be passed to the macro");
-        };
-
-        return error.into();
+        return quote! {
+            compile_error!("A markdown name, a configuration function should be passed to the macro");
+        }
+        .into();
     }
 
     if let syn::NestedMeta::Lit(syn::Lit::Str(parsed_markdown_name)) = &args[0] {
         markdown_name = parsed_markdown_name.value();
-        if let Err(stream) = validate_markdown_path(&markdown_name) {
+        if let Err(stream) = validate_markdown_path(&markdown_name, parsed_markdown_name.span()) {
             return stream.into();
         }
     } else {
-        let error = quote! {
+        return quote! {
             compile_error!("The first argument should be a string literal!");
-        };
-
-        return error.into();
+        }
+        .into();
     }
 
-    if let syn::NestedMeta::Lit(syn::Lit::Str(parsed_domain_name)) = &args[1] {
-        domain_name = parsed_domain_name.value();
+    let configuration_function;
+    if let syn::NestedMeta::Meta(syn::Meta::Path(function_path)) = &args[1] {
+        configuration_function = function_path;
     } else {
         let error = quote! {
-            compile_error!("The second argument should be a string literal!");
+            compile_error!("The second argument should be a configuration function!");
         };
 
         return error.into();
@@ -60,7 +60,10 @@ fn servirtium_test(
     let output = quote! {
         #[test]
         #signature {
-            let __servirtium_server_lock = servirtium::prepare_for_test(#enum_variant, #markdown_name, #domain_name);
+            let mut __servirtium_configuration = Default::default();
+            #configuration_function(&mut __servirtium_configuration);
+            let __servirtium_server_lock = servirtium::prepare_for_test(#enum_variant, #markdown_name,
+                &__servirtium_configuration);
 
             if let Err(e) = std::panic::catch_unwind(|| {
                 #block
@@ -74,12 +77,15 @@ fn servirtium_test(
     TokenStream::from(output)
 }
 
-fn validate_markdown_path<P: AsRef<Path>>(path: P) -> Result<(), proc_macro2::TokenStream> {
+fn validate_markdown_path<P: AsRef<Path>>(
+    path: P,
+    span: Span,
+) -> Result<(), proc_macro2::TokenStream> {
     let mut absoulte_path = match std::env::current_dir() {
         Ok(dir) => dir,
         Err(e) => {
             let compile_error_message = format!("Couldn't get the current directory: {}", e);
-            return Err(quote! {
+            return Err(quote! {span=>
                 compile_error!(#compile_error_message);
             });
         }
@@ -90,14 +96,14 @@ fn validate_markdown_path<P: AsRef<Path>>(path: P) -> Result<(), proc_macro2::To
     let parent = match absoulte_path.parent() {
         Some(parent) => parent,
         None => {
-            return Err(quote! {
+            return Err(quote! {span=>
                 compile_error!("The markdown path should point to a file!");
             });
         }
     };
 
     if !parent.exists() {
-        return Err(quote! {
+        return Err(quote_spanned! {span=>
             compile_error!("The directory doesn't exist");
         });
     }

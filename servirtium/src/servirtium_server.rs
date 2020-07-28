@@ -1,4 +1,7 @@
-use crate::{error::Error, markdown_manager::MarkdownManager};
+use crate::{
+    error::Error, markdown_manager::MarkdownManager,
+    servirtium_configuration::ServirtiumConfiguration,
+};
 use body::Bytes;
 use hyper::{
     body,
@@ -25,17 +28,20 @@ lazy_static! {
     static ref SERVIRTIUM_INSTANCE: Mutex<ServirtiumServer> = Mutex::new(ServirtiumServer::new());
 }
 
-pub fn prepare_for_test<P: AsRef<Path>, S: Into<String>>(
+pub fn prepare_for_test<P: AsRef<Path>>(
     mode: ServirtiumMode,
     script_path: P,
-    domain_name: S,
+    configuration: &ServirtiumConfiguration,
 ) -> Result<MutexGuard<'static, ()>, Error> {
     ServirtiumServer::start();
 
     let test_lock = TEST_LOCK.lock()?;
 
     let mut server_lock = SERVIRTIUM_INSTANCE.lock()?;
-    server_lock.domain_name = Some(domain_name.into());
+    if let Some(domain_name) = configuration.domain_name() {
+        server_lock.domain_name = Some(domain_name.clone());
+    }
+
     server_lock.interaction_mode = Some(mode);
     server_lock.record_path = Some(PathBuf::from(script_path.as_ref()));
 
