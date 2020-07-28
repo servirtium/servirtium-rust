@@ -60,10 +60,9 @@ fn servirtium_test(
     let output = quote! {
         #[test]
         #signature {
-            let mut __servirtium_configuration = Default::default();
+            let mut __servirtium_configuration = ServirtiumConfiguration::new(#enum_variant, #markdown_name);
             #configuration_function(&mut __servirtium_configuration);
-            let __servirtium_server_lock = servirtium::prepare_for_test(#enum_variant, #markdown_name,
-                &__servirtium_configuration);
+            let __servirtium_server_lock = servirtium::prepare_for_test(__servirtium_configuration);
 
             if let Err(e) = std::panic::catch_unwind(|| {
                 #block

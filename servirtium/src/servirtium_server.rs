@@ -14,11 +14,11 @@ use std::{
     collections::HashMap,
     convert::Infallible,
     net::SocketAddr,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{self, Mutex, MutexGuard},
     thread,
 };
-use sync::Once;
+use sync::{Arc, Once};
 use tokio::runtime::Runtime;
 
 static INITIALIZE_SERVIRTIUM: Once = Once::new();
@@ -28,22 +28,13 @@ lazy_static! {
     static ref SERVIRTIUM_INSTANCE: Mutex<ServirtiumServer> = Mutex::new(ServirtiumServer::new());
 }
 
-pub fn prepare_for_test<P: AsRef<Path>>(
-    mode: ServirtiumMode,
-    script_path: P,
-    configuration: &ServirtiumConfiguration,
+pub fn prepare_for_test(
+    configuration: ServirtiumConfiguration,
 ) -> Result<MutexGuard<'static, ()>, Error> {
-    ServirtiumServer::start();
-
     let test_lock = TEST_LOCK.lock()?;
-
     let mut server_lock = SERVIRTIUM_INSTANCE.lock()?;
-    if let Some(domain_name) = configuration.domain_name() {
-        server_lock.domain_name = Some(domain_name.clone());
-    }
-
-    server_lock.interaction_mode = Some(mode);
-    server_lock.record_path = Some(PathBuf::from(script_path.as_ref()));
+    server_lock.start();
+    server_lock.configuration = Some(Arc::new(configuration));
 
     Ok(test_lock)
 }
@@ -54,34 +45,28 @@ pub enum ServirtiumMode {
     Record,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ServirtiumServer {
-    interaction_mode: Option<ServirtiumMode>,
-    record_path: Option<PathBuf>,
-    domain_name: Option<String>,
+    configuration: Option<Arc<ServirtiumConfiguration>>,
 }
 
 impl ServirtiumServer {
     fn new() -> Self {
         ServirtiumServer {
-            interaction_mode: None,
-            domain_name: None,
-            record_path: None,
+            configuration: None,
         }
     }
 
-    fn start() {
+    fn start(&mut self) {
         INITIALIZE_SERVIRTIUM.call_once(|| {
             thread::spawn(|| {
                 Runtime::new().unwrap().block_on(async {
                     let addr = SocketAddr::from(([127, 0, 0, 1], 61417));
 
                     let server = Server::bind(&addr).serve(make_service_fn(|_| async {
-                        // service_fn converts our function into a `Service`
                         Ok::<_, Infallible>(service_fn(Self::handle_request))
                     }));
 
-                    // Run this server for... forever!
                     if let Err(e) = server.await {
                         eprintln!("Servirtium Server error: {}", e);
                     }
@@ -91,21 +76,22 @@ impl ServirtiumServer {
     }
 
     async fn handle_request(mut request: Request<Body>) -> Result<Response<Body>, Infallible> {
-        let servirtium_instance = SERVIRTIUM_INSTANCE.lock().unwrap().clone();
-        let result = match (
-            &servirtium_instance.interaction_mode,
-            &servirtium_instance.record_path,
-            &servirtium_instance.domain_name,
-        ) {
-            (Some(m), Some(record_path), Some(_)) => match m {
-                ServirtiumMode::Playback => servirtium_instance.handle_playback(),
-                ServirtiumMode::Record => {
-                    servirtium_instance
-                        .handle_record(&mut request, record_path)
+        let servirtium_config = SERVIRTIUM_INSTANCE
+            .lock()
+            .unwrap()
+            .configuration
+            .clone()
+            .unwrap();
+
+        let result = match servirtium_config.interaction_mode() {
+            ServirtiumMode::Playback => Self::handle_playback(servirtium_config.record_path()),
+            ServirtiumMode::Record => match servirtium_config.domain_name() {
+                Some(domain_name) => {
+                    Self::handle_record(&mut request, domain_name, servirtium_config.record_path())
                         .await
                 }
+                None => Err(Error::NotConfigured),
             },
-            _ => Err(Error::NotConfigured),
         };
 
         match result {
@@ -118,26 +104,24 @@ impl ServirtiumServer {
         }
     }
 
-    fn handle_playback(&self) -> Result<Response<Body>, Error> {
-        let playback_data = MarkdownManager::load_playback_file(
-            self.record_path.as_ref().ok_or(Error::NotConfigured)?,
-        )?;
+    fn handle_playback<P: AsRef<Path>>(record_path: P) -> Result<Response<Body>, Error> {
+        let playback_data = MarkdownManager::load_playback_file(record_path.as_ref())?;
         let mut response_builder = Response::builder();
 
         if let Some(headers_mut) = response_builder.headers_mut() {
-            Self::put_headers(headers_mut, self.filter_headers(&playback_data.headers))?;
+            Self::put_headers(headers_mut, Self::filter_headers(&playback_data.headers))?;
         }
 
         Ok(response_builder.body(playback_data.response_body.into())?)
     }
 
-    async fn handle_record<P: AsRef<Path>>(
-        &self,
+    async fn handle_record<S: AsRef<str>, P: AsRef<Path>>(
         mut request: &mut Request<Body>,
+        domain_name: S,
         record_path: P,
     ) -> Result<Response<Body>, Error> {
         let request_data = Self::read_request_data(&mut request).await?;
-        let response_data = self.forward_request(&request_data).await?;
+        let response_data = Self::forward_request(domain_name, &request_data).await?;
 
         MarkdownManager::save_markdown(record_path, &request_data, &response_data)?;
 
@@ -150,12 +134,11 @@ impl ServirtiumServer {
         Ok(response_builder.body(response_data.body.into())?)
     }
 
-    async fn forward_request(&self, request_data: &RequestData) -> Result<ResponseData, Error> {
-        let url = format!(
-            "{}{}",
-            self.domain_name.as_ref().ok_or(Error::NotConfigured)?,
-            request_data.uri
-        );
+    async fn forward_request<S: AsRef<str>>(
+        domain_name: S,
+        request_data: &RequestData,
+    ) -> Result<ResponseData, Error> {
+        let url = format!("{}{}", domain_name.as_ref(), request_data.uri);
 
         let response = reqwest::get(&url).await?;
         let status_code = response.status().as_u16();
@@ -210,7 +193,6 @@ impl ServirtiumServer {
     }
 
     fn filter_headers<'a>(
-        &self,
         headers: &'a HashMap<String, String>,
     ) -> impl Iterator<Item = (&'a String, &'a String)> + 'a {
         headers
