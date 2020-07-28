@@ -19,6 +19,7 @@ use std::{
     thread,
 };
 use sync::{Arc, Once};
+use thread::JoinHandle;
 use tokio::runtime::Runtime;
 
 static INITIALIZE_SERVIRTIUM: Once = Once::new();
@@ -48,18 +49,20 @@ pub enum ServirtiumMode {
 #[derive(Debug)]
 pub struct ServirtiumServer {
     configuration: Option<Arc<ServirtiumConfiguration>>,
+    join_handle: Option<JoinHandle<()>>,
 }
 
 impl ServirtiumServer {
     fn new() -> Self {
         ServirtiumServer {
             configuration: None,
+            join_handle: None,
         }
     }
 
     fn start(&mut self) {
         INITIALIZE_SERVIRTIUM.call_once(|| {
-            thread::spawn(|| {
+            self.join_handle = Some(thread::spawn(|| {
                 Runtime::new().unwrap().block_on(async {
                     let addr = SocketAddr::from(([127, 0, 0, 1], 61417));
 
@@ -71,7 +74,7 @@ impl ServirtiumServer {
                         eprintln!("Servirtium Server error: {}", e);
                     }
                 });
-            });
+            }));
         });
     }
 
@@ -200,6 +203,16 @@ impl ServirtiumServer {
             // Transfer-Encoding: chunked shouldn't be included in local tests because all the data is
             // written immediately and reqwest panics because of that
             .filter(|(key, value)| *key != "Transfer-Encoding" || *value != "chunked")
+    }
+}
+
+impl Drop for ServirtiumServer {
+    fn drop(&mut self) {
+        if let Some(join_handle) = self.join_handle.take() {
+            join_handle
+                .join()
+                .expect("Couldn't gracefully shutdown the Servirtium server thread");
+        }
     }
 }
 
