@@ -29,7 +29,7 @@ fn servirtium_test(
 
     if args.len() < 2 {
         return quote! {
-            compile_error!("A markdown name, a configuration function should be passed to the macro");
+            compile_error!("A markdown name and a configuration function should be passed to the macro");
         }
         .into();
     }
