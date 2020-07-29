@@ -1,7 +1,4 @@
-use crate::{
-    error::Error, markdown_manager::MarkdownManager,
-    servirtium_configuration::ServirtiumConfiguration,
-};
+use crate::{error::Error, markdown, servirtium_configuration::ServirtiumConfiguration};
 use hyper::{
     body,
     header::{HeaderName, HeaderValue},
@@ -140,7 +137,7 @@ impl ServirtiumServer {
     }
 
     fn handle_playback<P: AsRef<Path>>(record_path: P) -> Result<Response<Body>, Error> {
-        let playback_data = MarkdownManager::load_markdown(record_path.as_ref())?;
+        let playback_data = markdown::load_markdown(record_path.as_ref())?;
         let mut response_builder = Response::builder();
 
         if let Some(headers_mut) = response_builder.headers_mut() {
@@ -163,7 +160,7 @@ impl ServirtiumServer {
         let response_data = Self::forward_request(domain_name, &request_data).await?;
 
         if fail_if_markdown_changed
-            && !MarkdownManager::check_markdown_data_unchanged(
+            && !markdown::check_markdown_data_unchanged(
                 &record_path,
                 &request_data,
                 &response_data,
@@ -172,7 +169,7 @@ impl ServirtiumServer {
             return Err(Error::MarkdownDataChanged);
         }
 
-        MarkdownManager::save_markdown(record_path, &request_data, &response_data)?;
+        markdown::save_markdown(record_path, &request_data, &response_data)?;
 
         let mut response_builder = Response::builder().status(response_data.status_code);
 

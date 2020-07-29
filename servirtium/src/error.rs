@@ -1,10 +1,9 @@
+use crate::markdown;
 use hyper::http;
 use std::{fmt::Display, io, sync};
 
 #[derive(Debug)]
 pub enum Error {
-    InvalidMarkdownFormat,
-    InvalidMarkdownPath,
     IoError(io::Error),
     PoisonedLock,
     InvalidStatusCode,
@@ -17,7 +16,7 @@ pub enum Error {
     ParseUriError,
     HttpError(http::Error),
     MarkdownDataChanged,
-    InvalidInteractionNumber,
+    MarkdownParseError(markdown::error::Error),
 }
 
 impl std::error::Error for Error {}
@@ -25,7 +24,6 @@ impl std::error::Error for Error {}
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::InvalidMarkdownFormat => write!(f, "Markdown format is invalid"),
             Error::IoError(e) => write!(f, "IoError: {}", e),
             Error::PoisonedLock => write!(f, "The lock was poisoned"),
             Error::InvalidStatusCode => write!(f, "The status code is invalid"),
@@ -37,17 +35,11 @@ impl Display for Error {
             Error::HyperError(e) => write!(f, "Hyper error: {}", e),
             Error::ParseUriError => write!(f, "Parse URI Error"),
             Error::HttpError(e) => write!(f, "Http Error: {}", e),
-            Error::InvalidMarkdownPath => {
-                write!(f, "The markdown path should point to a markdown file")
-            }
             Error::MarkdownDataChanged => write!(
                 f,
                 "The request results are different from those stored in the existing markdown"
             ),
-            Error::InvalidInteractionNumber => write!(
-                f,
-                "Couldn't parse interaction number from the markdown file"
-            ),
+            Error::MarkdownParseError(e) => write!(f, "Error parsing the markdown file: {}", e),
         }
     }
 }
@@ -55,6 +47,12 @@ impl Display for Error {
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         Error::IoError(e)
+    }
+}
+
+impl From<markdown::error::Error> for Error {
+    fn from(e: markdown::error::Error) -> Self {
+        Error::MarkdownParseError(e)
     }
 }
 

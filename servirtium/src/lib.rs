@@ -1,5 +1,5 @@
 mod error;
-mod markdown_manager;
+mod markdown;
 mod servirtium_configuration;
 mod servirtium_server;
 
