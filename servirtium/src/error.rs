@@ -24,7 +24,7 @@ impl std::error::Error for Error {}
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::InvalidMarkdownFormat => write!(f, "The markdown format was poisoned"),
+            Error::InvalidMarkdownFormat => write!(f, "Markdown format is invalid"),
             Error::IoError(e) => write!(f, "IoError: {}", e),
             Error::PoisonedLock => write!(f, "The lock was poisoned"),
             Error::InvalidStatusCode => write!(f, "The status code is invalid"),
