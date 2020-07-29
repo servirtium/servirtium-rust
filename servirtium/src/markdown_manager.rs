@@ -93,10 +93,9 @@ impl MarkdownManager {
 
         write!(
             file,
-            "### Request body recorded for playback ():\r\n\r\n```\r\n",
+            "### Request body recorded for playback ():\r\n\r\n```\r\n{}\r\n```\r\n\r\n",
+            &request_data.body,
         )?;
-        file.write_all(&request_data.body)?;
-        write!(file, "\r\n```\r\n\r\n")?;
         write!(
             file,
             "### Response headers recorded for playback:\r\n\r\n```\r\n"
@@ -107,16 +106,49 @@ impl MarkdownManager {
         write!(file, "```\r\n\r\n")?;
         write!(
             file,
-            "### Response body recorded for playback ({}: {}):\r\n\r\n```\r\n",
+            "### Response body recorded for playback ({}: {}):\r\n\r\n```\r\n{}\r\n```\r\n\r\n",
             response_data.status_code,
             response_data
                 .headers
-                .get("Content-Type")
-                .unwrap_or(&String::from(""))
+                .get("content-type")
+                .unwrap_or(&String::from("")),
+            &response_data.body
         )?;
-        file.write_all(&response_data.body)?;
-        write!(file, "\r\n```\r\n\r\n")?;
 
         Ok(())
+    }
+
+    pub fn check_markdown_data_unchanged<P: AsRef<Path>>(
+        markdown_path: P,
+        request_data: &RequestData,
+        response_data: &ResponseData,
+    ) -> Result<bool, Error> {
+        let markdown_data = Self::load_markdown(markdown_path)?;
+
+        Ok(
+            markdown_data.request_body.trim() == request_data.body.trim()
+                && markdown_data.response_body.trim() == response_data.body.trim()
+                && Self::headers_equal(&markdown_data.request_headers, &request_data.headers)
+                && Self::headers_equal(&markdown_data.response_headers, &response_data.headers),
+        )
+    }
+
+    fn headers_equal(lhs: &HashMap<String, String>, rhs: &HashMap<String, String>) -> bool {
+        if lhs.len() != rhs.len() {
+            return false;
+        }
+
+        for (key, value) in lhs {
+            match rhs.get(key) {
+                Some(header) => {
+                    if header.trim() != value.trim() {
+                        return false;
+                    }
+                }
+                None => return false,
+            };
+        }
+
+        true
     }
 }

@@ -2,7 +2,6 @@ use crate::{
     error::Error, markdown_manager::MarkdownManager,
     servirtium_configuration::ServirtiumConfiguration,
 };
-use body::Bytes;
 use hyper::{
     body,
     header::{HeaderName, HeaderValue},
@@ -118,8 +117,13 @@ impl ServirtiumServer {
             ServirtiumMode::Playback => Self::handle_playback(servirtium_config.record_path()),
             ServirtiumMode::Record => match servirtium_config.domain_name() {
                 Some(domain_name) => {
-                    Self::handle_record(&mut request, domain_name, servirtium_config.record_path())
-                        .await
+                    Self::handle_record(
+                        &mut request,
+                        domain_name,
+                        servirtium_config.record_path(),
+                        servirtium_config.fail_if_markdown_changed(),
+                    )
+                    .await
                 }
                 None => Err(Error::NotConfigured),
             },
@@ -153,9 +157,20 @@ impl ServirtiumServer {
         mut request: &mut Request<Body>,
         domain_name: S,
         record_path: P,
+        fail_if_markdown_changed: bool,
     ) -> Result<Response<Body>, Error> {
         let request_data = Self::read_request_data(&mut request).await?;
         let response_data = Self::forward_request(domain_name, &request_data).await?;
+
+        if fail_if_markdown_changed
+            && !MarkdownManager::check_markdown_data_unchanged(
+                &record_path,
+                &request_data,
+                &response_data,
+            )?
+        {
+            return Err(Error::MarkdownDataChanged);
+        }
 
         MarkdownManager::save_markdown(record_path, &request_data, &response_data)?;
 
@@ -182,7 +197,7 @@ impl ServirtiumServer {
 
         Ok(ResponseData {
             status_code,
-            body,
+            body: String::from_utf8_lossy(&body).into(),
             headers,
         })
     }
@@ -200,7 +215,7 @@ impl ServirtiumServer {
             method,
             uri,
             headers,
-            body,
+            body: String::from_utf8_lossy(&body).into(),
         })
     }
 
@@ -252,12 +267,12 @@ pub struct RequestData {
     pub uri: String,
     pub headers: HashMap<String, String>,
     pub method: String,
-    pub body: Bytes,
+    pub body: String,
 }
 
 #[derive(Debug)]
 pub struct ResponseData {
     pub headers: HashMap<String, String>,
-    pub body: Bytes,
+    pub body: String,
     pub status_code: u16,
 }

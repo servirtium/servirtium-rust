@@ -16,6 +16,7 @@ pub enum Error {
     HyperError(hyper::Error),
     ParseUriError,
     HttpError(http::Error),
+    MarkdownDataChanged,
 }
 
 impl std::error::Error for Error {}
@@ -38,6 +39,10 @@ impl Display for Error {
             Error::InvalidMarkdownPath => {
                 write!(f, "The markdown path should point to a markdown file")
             }
+            Error::MarkdownDataChanged => write!(
+                f,
+                "The request results are different from those stored in the existing markdown"
+            ),
         }
     }
 }
