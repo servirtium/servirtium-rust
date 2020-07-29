@@ -58,7 +58,6 @@ fn servirtium_test(
     }
 
     let output = quote! {
-        #[test]
         #signature {
             let mut __servirtium_configuration = ServirtiumConfiguration::new(#enum_variant, #markdown_name);
             #configuration_function(&mut __servirtium_configuration);
