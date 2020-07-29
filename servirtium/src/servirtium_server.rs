@@ -15,29 +15,19 @@ use std::{
     convert::Infallible,
     net::SocketAddr,
     path::Path,
-    sync::{self, Mutex, MutexGuard},
+    sync::{self, Mutex},
     thread,
 };
-use sync::{Arc, Once};
+use sync::{Arc, Condvar, Once};
 use thread::JoinHandle;
 use tokio::runtime::Runtime;
 
 static INITIALIZE_SERVIRTIUM: Once = Once::new();
 
 lazy_static! {
-    static ref TEST_LOCK: Mutex<()> = Mutex::new(());
     static ref SERVIRTIUM_INSTANCE: Mutex<ServirtiumServer> = Mutex::new(ServirtiumServer::new());
-}
-
-pub fn prepare_for_test(
-    configuration: ServirtiumConfiguration,
-) -> Result<MutexGuard<'static, ()>, Error> {
-    let test_lock = TEST_LOCK.lock()?;
-    let mut server_lock = SERVIRTIUM_INSTANCE.lock()?;
-    server_lock.start();
-    server_lock.configuration = Some(Arc::new(configuration));
-
-    Ok(test_lock)
+    static ref TEST_LOCK: Arc<(Mutex<bool>, Condvar)> =
+        Arc::new((Mutex::new(false), Condvar::new()));
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -50,6 +40,7 @@ pub enum ServirtiumMode {
 pub struct ServirtiumServer {
     configuration: Option<Arc<ServirtiumConfiguration>>,
     join_handle: Option<JoinHandle<()>>,
+    error: Option<Error>,
 }
 
 impl ServirtiumServer {
@@ -57,12 +48,49 @@ impl ServirtiumServer {
         ServirtiumServer {
             configuration: None,
             join_handle: None,
+            error: None,
         }
+    }
+
+    pub fn prepare_for_test(configuration: ServirtiumConfiguration) {
+        Self::enter_test();
+
+        let mut server_lock = SERVIRTIUM_INSTANCE.lock().unwrap();
+        server_lock.start();
+        server_lock.configuration = Some(Arc::new(configuration));
+    }
+
+    pub fn cleanup_after_test() -> Result<(), Error> {
+        let mut result = Ok(());
+        let mut instance = SERVIRTIUM_INSTANCE.lock().unwrap();
+        if let Some(error) = instance.error.take() {
+            result = Err(error);
+        }
+
+        Self::exit_test();
+
+        result
+    }
+
+    fn enter_test() {
+        let (lock, cond) = &*TEST_LOCK.clone();
+        let mut is_test_running = cond
+            .wait_while(lock.lock().unwrap(), |is_test_running| *is_test_running)
+            .unwrap();
+        *is_test_running = true;
+    }
+
+    fn exit_test() {
+        let (lock, cond) = &*TEST_LOCK.clone();
+        let mut is_test_running = lock.lock().unwrap();
+        *is_test_running = false;
+
+        cond.notify_one();
     }
 
     fn start(&mut self) {
         INITIALIZE_SERVIRTIUM.call_once(|| {
-            self.join_handle = Some(thread::spawn(|| {
+            self.join_handle = Some(thread::spawn(move || {
                 Runtime::new().unwrap().block_on(async {
                     let addr = SocketAddr::from(([127, 0, 0, 1], 61417));
 
@@ -100,9 +128,9 @@ impl ServirtiumServer {
         match result {
             Ok(response) => Ok(response),
             Err(error) => {
-                eprintln!("An error occured: {}", error);
-                let bytes = Bytes::from(error.to_string());
-                Ok(Response::builder().status(500).body(bytes.into()).unwrap())
+                let mut instance = SERVIRTIUM_INSTANCE.lock().unwrap();
+                instance.error = Some(error);
+                Ok(Response::builder().status(500).body(Body::empty()).unwrap())
             }
         }
     }
