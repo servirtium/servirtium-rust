@@ -12,23 +12,27 @@ lazy_static! {
         Regex::new(r"(?m)(?P<header_key>[a-zA-Z\-]+): (?P<header_value>.*?)$").unwrap();
 
     static ref MARKDOWN_REGEX: Regex = Regex::new(
-            "(?ms)\\#\\# [^/]*(?P<uri>.*\\.xml).*?\\#\\#\\# Response headers recorded for playback.*?```\
-            \\s*(?P<headers_part>.*?)\\s*```.*?\\#\\#\\# Response body recorded for playback.*?```\\s*\
-            (?P<body_part>.*?)\\s*```.*?")
+            "(?ms)\\#\\# [^/]*(?P<uri>.*\\.xml).*?\
+            \\#\\#\\# Request headers recorded for playback.*?```\\s*(?P<request_headers_part>.*?)\\s*```.*?\
+            \\#\\#\\# Request body recorded for playback.*?```\\s*(?P<request_body_part>.*?)\\s*```.*?\
+            \\#\\#\\# Response headers recorded for playback.*?```\\s*(?P<response_headers_part>.*?)\\s*```.*?\
+            \\#\\#\\# Response body recorded for playback.*?```\\s*(?P<response_body_part>.*?)\\s*```.*?")
         .unwrap();
 }
 
 #[derive(Debug, Clone)]
-pub struct PlaybackData {
+pub struct MarkdownData {
     pub uri: String,
-    pub headers: HashMap<String, String>,
+    pub request_headers: HashMap<String, String>,
+    pub request_body: String,
+    pub response_headers: HashMap<String, String>,
     pub response_body: String,
 }
 
 pub struct MarkdownManager;
 
 impl MarkdownManager {
-    pub fn load_playback_file<P: AsRef<Path>>(filename: P) -> Result<PlaybackData, Error> {
+    pub fn load_markdown<P: AsRef<Path>>(filename: P) -> Result<MarkdownData, Error> {
         let file_contents = fs::read_to_string(filename)?;
 
         let markdown_captures = MARKDOWN_REGEX
@@ -36,13 +40,18 @@ impl MarkdownManager {
             .ok_or(Error::InvalidMarkdownFormat)?;
 
         let uri = &markdown_captures["uri"];
-        let headers_part = &markdown_captures["headers_part"];
-        let body_part = &markdown_captures["body_part"];
+        let request_headers_part = &markdown_captures["request_headers_part"];
+        let request_body_part = &markdown_captures["request_body_part"];
+        let headers_part = &markdown_captures["response_headers_part"];
+        let body_part = &markdown_captures["response_body_part"];
 
-        let headers = Self::parse_headers(headers_part);
+        let response_headers = Self::parse_headers(headers_part);
+        let request_headers = Self::parse_headers(request_headers_part);
 
-        Ok(PlaybackData {
-            headers,
+        Ok(MarkdownData {
+            request_body: String::from(request_body_part),
+            request_headers,
+            response_headers,
             response_body: String::from(body_part),
             uri: String::from(uri),
         })

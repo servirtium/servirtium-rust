@@ -136,11 +136,14 @@ impl ServirtiumServer {
     }
 
     fn handle_playback<P: AsRef<Path>>(record_path: P) -> Result<Response<Body>, Error> {
-        let playback_data = MarkdownManager::load_playback_file(record_path.as_ref())?;
+        let playback_data = MarkdownManager::load_markdown(record_path.as_ref())?;
         let mut response_builder = Response::builder();
 
         if let Some(headers_mut) = response_builder.headers_mut() {
-            Self::put_headers(headers_mut, Self::filter_headers(&playback_data.headers))?;
+            Self::put_headers(
+                headers_mut,
+                Self::filter_headers(&playback_data.response_headers),
+            )?;
         }
 
         Ok(response_builder.body(playback_data.response_body.into())?)
