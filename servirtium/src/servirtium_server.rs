@@ -6,6 +6,7 @@ use hyper::{
     Body, HeaderMap, Request, Response, Server,
 };
 use lazy_static::lazy_static;
+use markdown::MarkdownData;
 use std::{
     collections::HashMap,
     convert::Infallible,
@@ -37,6 +38,9 @@ pub struct ServirtiumServer {
     configuration: Option<Arc<ServirtiumConfiguration>>,
     join_handle: Option<JoinHandle<()>>,
     error: Option<Error>,
+    interactions: Vec<InteractionData>,
+    markdown_data: Option<Vec<MarkdownData>>,
+    interaction_number: u8,
 }
 
 impl ServirtiumServer {
@@ -45,6 +49,9 @@ impl ServirtiumServer {
             configuration: None,
             join_handle: None,
             error: None,
+            interactions: Vec::new(),
+            markdown_data: None,
+            interaction_number: 0,
         }
     }
 
@@ -59,10 +66,32 @@ impl ServirtiumServer {
     pub fn cleanup_after_test() -> Result<(), Error> {
         let mut result = Ok(());
         let mut instance = SERVIRTIUM_INSTANCE.lock().unwrap();
-        if let Some(error) = instance.error.take() {
+        let mut error = instance.error.take();
+        let config = instance.configuration.as_ref().unwrap();
+
+        if error.is_none() && config.interaction_mode() == ServirtiumMode::Record {
+            let record_path = config.record_path();
+
+            if instance
+                .configuration
+                .as_ref()
+                .unwrap()
+                .fail_if_markdown_changed()
+                && markdown::check_markdown_data_unchanged(record_path, &instance.interactions)?
+            {
+                error = Some(Error::MarkdownDataChanged);
+            } else {
+                error = markdown::save_interactions(record_path, &instance.interactions)
+                    .err()
+                    .map(|e| e.into());
+            }
+        }
+
+        if let Some(error) = error {
             result = Err(error);
         }
 
+        instance.reset();
         Self::exit_test();
 
         result
@@ -113,15 +142,7 @@ impl ServirtiumServer {
         let result = match servirtium_config.interaction_mode() {
             ServirtiumMode::Playback => Self::handle_playback(servirtium_config.record_path()),
             ServirtiumMode::Record => match servirtium_config.domain_name() {
-                Some(domain_name) => {
-                    Self::handle_record(
-                        &mut request,
-                        domain_name,
-                        servirtium_config.record_path(),
-                        servirtium_config.fail_if_markdown_changed(),
-                    )
-                    .await
-                }
+                Some(domain_name) => Self::handle_record(&mut request, domain_name).await,
                 None => Err(Error::NotConfigured),
             },
         };
@@ -137,7 +158,15 @@ impl ServirtiumServer {
     }
 
     fn handle_playback<P: AsRef<Path>>(record_path: P) -> Result<Response<Body>, Error> {
-        let playback_data = markdown::load_markdown(record_path.as_ref())?;
+        let mut instance = SERVIRTIUM_INSTANCE.lock().unwrap();
+        if instance.markdown_data.is_none() {
+            instance.markdown_data = Some(markdown::load_markdown(record_path)?);
+        } else {
+            instance.interaction_number += 1;
+        }
+
+        let playback_data =
+            &instance.markdown_data.as_ref().unwrap()[instance.interaction_number as usize];
         let mut response_builder = Response::builder();
 
         if let Some(headers_mut) = response_builder.headers_mut() {
@@ -147,37 +176,36 @@ impl ServirtiumServer {
             )?;
         }
 
-        Ok(response_builder.body(playback_data.response_body.into())?)
+        Ok(response_builder.body(playback_data.response_body.clone().into())?)
     }
 
-    async fn handle_record<S: AsRef<str>, P: AsRef<Path>>(
+    async fn handle_record<S: AsRef<str>>(
         mut request: &mut Request<Body>,
         domain_name: S,
-        record_path: P,
-        fail_if_markdown_changed: bool,
     ) -> Result<Response<Body>, Error> {
         let request_data = Self::read_request_data(&mut request).await?;
         let response_data = Self::forward_request(domain_name, &request_data).await?;
 
-        if fail_if_markdown_changed
-            && !markdown::check_markdown_data_unchanged(
-                &record_path,
-                &request_data,
-                &response_data,
-            )?
-        {
-            return Err(Error::MarkdownDataChanged);
-        }
+        let interaction_data = InteractionData {
+            request_data,
+            response_data,
+        };
 
-        markdown::save_markdown(record_path, &request_data, &response_data)?;
-
-        let mut response_builder = Response::builder().status(response_data.status_code);
+        let mut response_builder =
+            Response::builder().status(interaction_data.response_data.status_code);
 
         if let Some(header_map) = response_builder.headers_mut() {
-            Self::put_headers(header_map, &response_data.headers)?;
+            Self::put_headers(header_map, &interaction_data.response_data.headers)?;
         }
+        let body = interaction_data.response_data.body.clone();
 
-        Ok(response_builder.body(response_data.body.into())?)
+        SERVIRTIUM_INSTANCE
+            .lock()
+            .unwrap()
+            .interactions
+            .push(interaction_data);
+
+        Ok(response_builder.body(body.into())?)
     }
 
     async fn forward_request<S: AsRef<str>>(
@@ -247,6 +275,13 @@ impl ServirtiumServer {
             // written immediately and reqwest panics because of that
             .filter(|(key, value)| *key != "Transfer-Encoding" || *value != "chunked")
     }
+
+    fn reset(&mut self) {
+        self.interactions.clear();
+        self.interaction_number = 0;
+        self.markdown_data = None;
+        self.error = None;
+    }
 }
 
 impl Drop for ServirtiumServer {
@@ -259,17 +294,23 @@ impl Drop for ServirtiumServer {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+pub struct InteractionData {
+    pub request_data: RequestData,
+    pub response_data: ResponseData,
+}
+
+#[derive(Debug, Clone)]
 pub struct RequestData {
     pub uri: String,
-    pub headers: HashMap<String, String>,
     pub method: String,
+    pub headers: HashMap<String, String>,
     pub body: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ResponseData {
+    pub status_code: u16,
     pub headers: HashMap<String, String>,
     pub body: String,
-    pub status_code: u16,
 }
