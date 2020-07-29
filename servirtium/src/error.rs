@@ -16,7 +16,6 @@ pub enum Error {
     HyperError(hyper::Error),
     ParseUriError,
     HttpError(http::Error),
-    UnknownError,
 }
 
 impl std::error::Error for Error {}
@@ -35,7 +34,6 @@ impl Display for Error {
             Error::InvalidBody => write!(f, "Invalid body"),
             Error::HyperError(e) => write!(f, "Hyper error: {}", e),
             Error::ParseUriError => write!(f, "Parse URI Error"),
-            Error::UnknownError => write!(f, "Unknown Servirtium Error"),
             Error::HttpError(e) => write!(f, "Http Error: {}", e),
             Error::InvalidMarkdownPath => {
                 write!(f, "The markdown path should point to a markdown file")
