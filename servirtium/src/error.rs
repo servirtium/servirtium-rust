@@ -17,6 +17,7 @@ pub enum Error {
     ParseUriError,
     HttpError(http::Error),
     MarkdownDataChanged,
+    InvalidInteractionNumber,
 }
 
 impl std::error::Error for Error {}
@@ -42,6 +43,10 @@ impl Display for Error {
             Error::MarkdownDataChanged => write!(
                 f,
                 "The request results are different from those stored in the existing markdown"
+            ),
+            Error::InvalidInteractionNumber => write!(
+                f,
+                "Couldn't parse interaction number from the markdown file"
             ),
         }
     }

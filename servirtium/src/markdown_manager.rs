@@ -10,21 +10,31 @@ use std::{collections::HashMap, fs, io::Write, path::Path};
 lazy_static! {
     static ref HEADER_REGEX: Regex =
         Regex::new(r"(?m)(?P<header_key>[a-zA-Z\-]+): (?P<header_value>.*?)$").unwrap();
-
     static ref MARKDOWN_REGEX: Regex = Regex::new(
-            "(?ms)\\#\\# [^/]*(?P<uri>.*\\.xml).*?\
-            \\#\\#\\# Request headers recorded for playback.*?```\\s*(?P<request_headers_part>.*?)\\s*```.*?\
-            \\#\\#\\# Request body recorded for playback.*?```\\s*(?P<request_body_part>.*?)\\s*```.*?\
-            \\#\\#\\# Response headers recorded for playback.*?```\\s*(?P<response_headers_part>.*?)\\s*```.*?\
-            \\#\\#\\# Response body recorded for playback.*?```\\s*(?P<response_body_part>.*?)\\s*```.*?")
-        .unwrap();
+        "(?ms)\
+            \\#\\# Interaction (?P<interaction_number>[0-9]+): (?P<http_method>[A-Z]+) \
+            (?P<uri>[^ ]*)\
+            \\#\\#\\# Request headers recorded for playback.*?\
+            ```\\s*(?P<request_headers_part>.*?)\\s*```.*?\
+            \\#\\#\\# Request body recorded for playback.*?\
+            ```\\s*(?P<request_body_part>.*?)\\s*```.*?\
+            \\#\\#\\# Response headers recorded for playback.*?\
+            ```\\s*(?P<response_headers_part>.*?)\\s*```.*?\
+            \\#\\#\\# Response body recorded for playback \\((?P<status_code>[0-9]+)[^)]*\\).*?\
+            ```\\s*(?P<response_body_part>.*?)\\s*```.*?"
+    )
+    .unwrap();
 }
 
 #[derive(Debug, Clone)]
 pub struct MarkdownData {
+    pub interaction_number: u8,
     pub uri: String,
+    pub method: String,
     pub request_headers: HashMap<String, String>,
     pub request_body: String,
+
+    pub status_code: u16,
     pub response_headers: HashMap<String, String>,
     pub response_body: String,
 }
@@ -40,20 +50,30 @@ impl MarkdownManager {
             .ok_or(Error::InvalidMarkdownFormat)?;
 
         let uri = &markdown_captures["uri"];
+        let interaction_number = markdown_captures["interaction_number"]
+            .parse()
+            .map_err(|_| Error::InvalidInteractionNumber)?;
         let request_headers_part = &markdown_captures["request_headers_part"];
         let request_body_part = &markdown_captures["request_body_part"];
-        let headers_part = &markdown_captures["response_headers_part"];
-        let body_part = &markdown_captures["response_body_part"];
+        let status_code = markdown_captures["status_code"]
+            .parse()
+            .map_err(|_| Error::InvalidStatusCode)?;
+        let method = &markdown_captures["http_method"];
+        let response_headers_part = &markdown_captures["response_headers_part"];
+        let response_body_part = &markdown_captures["response_body_part"];
 
-        let response_headers = Self::parse_headers(headers_part);
+        let response_headers = Self::parse_headers(response_headers_part);
         let request_headers = Self::parse_headers(request_headers_part);
 
         Ok(MarkdownData {
-            request_body: String::from(request_body_part),
+            request_body: request_body_part.into(),
+            interaction_number,
+            status_code,
+            method: method.into(),
             request_headers,
             response_headers,
-            response_body: String::from(body_part),
-            uri: String::from(uri),
+            response_body: response_body_part.into(),
+            uri: uri.into(),
         })
     }
 
