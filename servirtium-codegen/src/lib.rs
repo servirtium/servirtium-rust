@@ -61,17 +61,17 @@ fn servirtium_test(
         #signature {
             let mut __servirtium_configuration = ServirtiumConfiguration::new(#enum_variant, #markdown_name);
             #configuration_function(&mut __servirtium_configuration);
-            servirtium::ServirtiumServer::prepare_for_test(__servirtium_configuration);
+            servirtium::ServirtiumServer::before_test(__servirtium_configuration);
 
             if let Err(e) = std::panic::catch_unwind(|| {
                 #block
             }) {
-                if let Err(e) = servirtium::ServirtiumServer::cleanup_after_test() {
+                if let Err(e) = servirtium::ServirtiumServer::after_test() {
                     panic!("Servirtium Error: {}", e);
                 }
                 std::panic::resume_unwind(e);
             }
-            if let Err(e) = servirtium::ServirtiumServer::cleanup_after_test() {
+            if let Err(e) = servirtium::ServirtiumServer::after_test() {
                 panic!("Servirtium Error: {}", e);
             }
         }

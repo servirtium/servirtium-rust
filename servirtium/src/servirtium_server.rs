@@ -55,7 +55,7 @@ impl ServirtiumServer {
         }
     }
 
-    pub fn prepare_for_test(configuration: ServirtiumConfiguration) {
+    pub fn before_test(configuration: ServirtiumConfiguration) {
         Self::enter_test();
 
         let mut server_lock = SERVIRTIUM_INSTANCE.lock().unwrap();
@@ -63,7 +63,7 @@ impl ServirtiumServer {
         server_lock.configuration = Some(Arc::new(configuration));
     }
 
-    pub fn cleanup_after_test() -> Result<(), Error> {
+    pub fn after_test() -> Result<(), Error> {
         let mut result = Ok(());
         let mut instance = SERVIRTIUM_INSTANCE.lock().unwrap();
         let mut error = instance.error.take();
