@@ -69,10 +69,7 @@ impl ServirtiumServer {
     ) -> Result<ResponseData, Error> {
         match self.configuration.as_ref().unwrap().interaction_mode() {
             ServirtiumMode::Playback => self.handle_playback(),
-            ServirtiumMode::Record => match self.configuration.as_ref().unwrap().domain_name() {
-                Some(_) => self.handle_record(&mut request).await,
-                None => Err(Error::NotConfigured),
-            },
+            ServirtiumMode::Record => self.handle_record(&mut request).await,
         }
     }
 
@@ -110,11 +107,16 @@ impl ServirtiumServer {
         &mut self,
         request_data: &mut RequestData,
     ) -> Result<ResponseData, Error> {
-        let response_data = Self::forward_request(
-            self.configuration.as_mut().unwrap().domain_name().unwrap(),
-            request_data,
-        )
-        .await?;
+        let config = self.configuration.as_mut().unwrap();
+
+        let http_client = config.http_client();
+
+        let response_data = http_client
+            .make_request(
+                config.domain_name().ok_or(Error::NotConfigured)?,
+                request_data,
+            )
+            .await?;
 
         let interaction_data = InteractionData {
             interaction_number: self.interaction_number,
@@ -134,25 +136,6 @@ impl ServirtiumServer {
         self.interactions.push(interaction_data);
 
         Ok(response_data)
-    }
-
-    async fn forward_request<S: AsRef<str>>(
-        domain_name: S,
-        request_data: &RequestData,
-    ) -> Result<ResponseData, Error> {
-        let url = format!("{}{}", domain_name.as_ref(), request_data.uri);
-
-        let response = reqwest::get(&url).await?;
-        let status_code = response.status().as_u16();
-        let headers = Self::extract_headers(response.headers());
-
-        let body = response.bytes().await?;
-
-        Ok(ResponseData {
-            status_code,
-            body: String::from_utf8_lossy(&body).into(),
-            headers,
-        })
     }
 
     fn put_headers<'a, I: IntoIterator<Item = (&'a String, &'a String)>>(
@@ -183,15 +166,6 @@ impl ServirtiumServer {
         self.interaction_number = 0;
         self.markdown_data = None;
         self.error = None;
-    }
-
-    fn extract_headers(header_map: &HeaderMap) -> HashMap<String, String> {
-        // it currently ignores header values with opaque characters
-        header_map
-            .iter()
-            .map(|(k, v)| (String::from(k.as_str()), v.to_str()))
-            .filter_map(|(key, value)| value.ok().map(|v| (key, String::from(v))))
-            .collect::<HashMap<_, _>>()
     }
 }
 

@@ -1,4 +1,5 @@
 mod error;
+mod http_client;
 mod interaction_manager;
 mod markdown;
 mod runner;
@@ -6,6 +7,8 @@ mod servirtium_configuration;
 mod servirtium_server;
 mod test_session;
 
+pub use http_client::HttpClient;
+pub use http_client::ReqwestHttpClient;
 pub use interaction_manager::InteractionManager;
 pub use markdown::MarkdownInteractionManager;
 pub use servirtium_codegen::servirtium_playback_test;
