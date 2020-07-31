@@ -52,3 +52,9 @@ impl HttpClient for ReqwestHttpClient {
         })
     }
 }
+
+impl Default for ReqwestHttpClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
