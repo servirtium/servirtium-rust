@@ -11,7 +11,6 @@ use std::{
     collections::HashMap,
     convert::Infallible,
     net::SocketAddr,
-    path::Path,
     sync::{self, Mutex},
     thread,
 };
@@ -22,7 +21,8 @@ use tokio::runtime::Runtime;
 static INITIALIZE_SERVIRTIUM: Once = Once::new();
 
 lazy_static! {
-    static ref SERVIRTIUM_INSTANCE: Mutex<ServirtiumServer> = Mutex::new(ServirtiumServer::new());
+    static ref SERVIRTIUM_INSTANCE: Arc<(Mutex<Option<ServirtiumServer>>, Condvar)> =
+        Arc::new((Mutex::new(Some(ServirtiumServer::new())), Condvar::new()));
     static ref TEST_LOCK: Arc<(Mutex<bool>, Condvar)> =
         Arc::new((Mutex::new(false), Condvar::new()));
 }
@@ -35,7 +35,7 @@ pub enum ServirtiumMode {
 
 #[derive(Debug)]
 pub struct ServirtiumServer {
-    configuration: Option<Arc<ServirtiumConfiguration>>,
+    configuration: Option<ServirtiumConfiguration>,
     join_handle: Option<JoinHandle<()>>,
     error: Option<Error>,
     interactions: Vec<InteractionData>,
@@ -55,17 +55,37 @@ impl ServirtiumServer {
         }
     }
 
+    fn instance() -> Self {
+        let (mutex, condvar) = &*SERVIRTIUM_INSTANCE.clone();
+        let mut mutex = condvar
+            .wait_while(mutex.lock().unwrap(), |option| option.is_none())
+            .unwrap();
+
+        let instance = mutex.take().unwrap();
+        condvar.notify_one();
+
+        instance
+    }
+
+    fn release_instance(self) {
+        let (mutex, condvar) = &*SERVIRTIUM_INSTANCE.clone();
+        *mutex.lock().unwrap() = Some(self);
+        condvar.notify_one();
+    }
+
     pub fn before_test(configuration: ServirtiumConfiguration) {
         Self::enter_test();
 
-        let mut server_lock = SERVIRTIUM_INSTANCE.lock().unwrap();
-        server_lock.start();
-        server_lock.configuration = Some(Arc::new(configuration));
+        let mut server = Self::instance();
+        server.start();
+
+        server.configuration = Some(configuration);
+        server.release_instance();
     }
 
     pub fn after_test() -> Result<(), Error> {
+        let mut instance = Self::instance();
         let mut result = Ok(());
-        let mut instance = SERVIRTIUM_INSTANCE.lock().unwrap();
         let mut error = instance.error.take();
         let config = instance.configuration.as_ref().unwrap();
 
@@ -92,6 +112,8 @@ impl ServirtiumServer {
         }
 
         instance.reset();
+        instance.release_instance();
+
         Self::exit_test();
 
         result
@@ -120,7 +142,13 @@ impl ServirtiumServer {
                     let addr = SocketAddr::from(([127, 0, 0, 1], 61417));
 
                     let server = Server::bind(&addr).serve(make_service_fn(|_| async {
-                        Ok::<_, Infallible>(service_fn(Self::handle_request))
+                        Ok::<_, Infallible>(service_fn(|req| async {
+                            let mut instance = Self::instance();
+
+                            let response = instance.handle_request(req).await;
+                            instance.release_instance();
+                            response
+                        }))
                     }));
 
                     if let Err(e) = server.await {
@@ -131,18 +159,14 @@ impl ServirtiumServer {
         });
     }
 
-    async fn handle_request(mut request: Request<Body>) -> Result<Response<Body>, Infallible> {
-        let servirtium_config = SERVIRTIUM_INSTANCE
-            .lock()
-            .unwrap()
-            .configuration
-            .clone()
-            .unwrap();
-
-        let result = match servirtium_config.interaction_mode() {
-            ServirtiumMode::Playback => Self::handle_playback(servirtium_config.record_path()),
-            ServirtiumMode::Record => match servirtium_config.domain_name() {
-                Some(domain_name) => Self::handle_record(&mut request, domain_name).await,
+    async fn handle_request(
+        &mut self,
+        mut request: Request<Body>,
+    ) -> Result<Response<Body>, Infallible> {
+        let result = match self.configuration.as_ref().unwrap().interaction_mode() {
+            ServirtiumMode::Playback => self.handle_playback(),
+            ServirtiumMode::Record => match self.configuration.as_ref().unwrap().domain_name() {
+                Some(_) => self.handle_record(&mut request).await,
                 None => Err(Error::NotConfigured),
             },
         };
@@ -150,23 +174,22 @@ impl ServirtiumServer {
         match result {
             Ok(response) => Ok(response),
             Err(error) => {
-                let mut instance = SERVIRTIUM_INSTANCE.lock().unwrap();
-                instance.error = Some(error);
+                self.error = Some(error);
                 Ok(Response::builder().status(500).body(Body::empty()).unwrap())
             }
         }
     }
 
-    fn handle_playback<P: AsRef<Path>>(record_path: P) -> Result<Response<Body>, Error> {
-        let mut instance = SERVIRTIUM_INSTANCE.lock().unwrap();
-        if instance.markdown_data.is_none() {
-            instance.markdown_data = Some(markdown::load_markdown(record_path)?);
+    fn handle_playback(&mut self) -> Result<Response<Body>, Error> {
+        if self.markdown_data.is_none() {
+            self.markdown_data = Some(markdown::load_markdown(
+                self.configuration.as_mut().unwrap().record_path(),
+            )?);
         } else {
-            instance.interaction_number += 1;
+            self.interaction_number += 1;
         }
 
-        let playback_data =
-            &instance.markdown_data.as_ref().unwrap()[instance.interaction_number as usize];
+        let playback_data = &self.markdown_data.as_ref().unwrap()[self.interaction_number as usize];
         let mut response_builder = Response::builder();
 
         if let Some(headers_mut) = response_builder.headers_mut() {
@@ -179,12 +202,16 @@ impl ServirtiumServer {
         Ok(response_builder.body(playback_data.response_body.clone().into())?)
     }
 
-    async fn handle_record<S: AsRef<str>>(
+    async fn handle_record(
+        &mut self,
         mut request: &mut Request<Body>,
-        domain_name: S,
     ) -> Result<Response<Body>, Error> {
         let request_data = Self::read_request_data(&mut request).await?;
-        let response_data = Self::forward_request(domain_name, &request_data).await?;
+        let response_data = Self::forward_request(
+            self.configuration.as_mut().unwrap().domain_name().unwrap(),
+            &request_data,
+        )
+        .await?;
 
         let interaction_data = InteractionData {
             request_data,
@@ -199,11 +226,7 @@ impl ServirtiumServer {
         }
         let body = interaction_data.response_data.body.clone();
 
-        SERVIRTIUM_INSTANCE
-            .lock()
-            .unwrap()
-            .interactions
-            .push(interaction_data);
+        self.interactions.push(interaction_data);
 
         Ok(response_builder.body(body.into())?)
     }
