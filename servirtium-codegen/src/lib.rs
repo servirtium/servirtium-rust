@@ -65,17 +65,17 @@ fn servirtium_test(
             );
 
             #configuration_function(&mut __servirtium_configuration);
-            servirtium::ServirtiumServer::before_test(__servirtium_configuration);
+            servirtium::TestSession::before_test(__servirtium_configuration);
 
             if let Err(e) = std::panic::catch_unwind(|| {
                 #block
             }) {
-                if let Err(e) = servirtium::ServirtiumServer::after_test() {
+                if let Err(e) = servirtium::TestSession::after_test() {
                     panic!("Servirtium Error: {}", e);
                 }
                 std::panic::resume_unwind(e);
             }
-            if let Err(e) = servirtium::ServirtiumServer::after_test() {
+            if let Err(e) = servirtium::TestSession::after_test() {
                 panic!("Servirtium Error: {}", e);
             }
         }
