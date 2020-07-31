@@ -1,9 +1,6 @@
 pub mod error;
 
-use crate::{
-    interaction_manager::InteractionManager,
-    servirtium_server::{InteractionData, RequestData, ResponseData},
-};
+use crate::{interaction_manager::InteractionManager, InteractionData, RequestData, ResponseData};
 use error::Error;
 use fs::File;
 use lazy_static::lazy_static;

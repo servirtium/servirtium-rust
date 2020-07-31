@@ -1,4 +1,4 @@
-use crate::{error::Error, servirtium_server::RequestData, ServirtiumServer, TestSession};
+use crate::{error::Error, RequestData, ServirtiumServer, TestSession};
 use hyper::{
     body,
     header::{HeaderName, HeaderValue},

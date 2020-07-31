@@ -1,4 +1,4 @@
-use crate::servirtium_server::InteractionData;
+use crate::InteractionData;
 use std::fmt::Debug;
 
 pub trait InteractionManager: Debug {

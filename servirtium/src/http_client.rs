@@ -1,7 +1,4 @@
-use crate::{
-    error::Error,
-    servirtium_server::{RequestData, ResponseData},
-};
+use crate::{error::Error, RequestData, ResponseData};
 use async_trait::async_trait;
 use hyper::HeaderMap;
 use std::{collections::HashMap, fmt::Debug};

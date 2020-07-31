@@ -1,3 +1,4 @@
+mod data;
 mod error;
 mod http_client;
 mod interaction_manager;
@@ -7,6 +8,9 @@ mod servirtium_configuration;
 mod servirtium_server;
 mod test_session;
 
+pub use data::InteractionData;
+pub use data::RequestData;
+pub use data::ResponseData;
 pub use http_client::HttpClient;
 pub use http_client::ReqwestHttpClient;
 pub use interaction_manager::InteractionManager;
