@@ -1,21 +1,24 @@
-use crate::ServirtiumMode;
-use std::path::{Path, PathBuf};
+use crate::{interaction_manager::InteractionManager, ServirtiumMode};
+use std::sync::Arc;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ServirtiumConfiguration {
     domain_name: Option<String>,
     interaction_mode: ServirtiumMode,
-    record_path: PathBuf,
     fail_if_markdown_changed: bool,
+    interaction_manager: Arc<dyn InteractionManager + Send + Sync>,
 }
 
 impl ServirtiumConfiguration {
-    pub fn new<P: Into<PathBuf>>(mode: ServirtiumMode, markdown_path: P) -> Self {
+    pub fn new(
+        mode: ServirtiumMode,
+        interaction_manager: Box<dyn InteractionManager + Send + Sync>,
+    ) -> Self {
         Self {
             interaction_mode: mode,
-            record_path: markdown_path.into(),
             domain_name: None,
             fail_if_markdown_changed: false,
+            interaction_manager: interaction_manager.into(),
         }
     }
 
@@ -39,7 +42,7 @@ impl ServirtiumConfiguration {
         self.interaction_mode
     }
 
-    pub fn record_path(&self) -> &Path {
-        &self.record_path
+    pub fn interaction_manager(&self) -> Arc<dyn InteractionManager + Send + Sync> {
+        self.interaction_manager.clone()
     }
 }

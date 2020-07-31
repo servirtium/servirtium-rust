@@ -4,7 +4,6 @@ use std::{fmt::Display, io};
 pub enum Error {
     IoError(io::Error),
     InvalidMarkdownFormat,
-    InvalidMarkdownPath,
     InvalidInteractionNumber,
     InvalidStatusCode,
 }
@@ -23,9 +22,6 @@ impl Display for Error {
             Error::InvalidMarkdownFormat => write!(f, "Markdown format is invalid"),
             Error::IoError(e) => write!(f, "IoError: {}", e),
             Error::InvalidStatusCode => write!(f, "The status code is invalid"),
-            Error::InvalidMarkdownPath => {
-                write!(f, "The markdown path should point to a markdown file")
-            }
             Error::InvalidInteractionNumber => write!(
                 f,
                 "Couldn't parse interaction number from the markdown file"

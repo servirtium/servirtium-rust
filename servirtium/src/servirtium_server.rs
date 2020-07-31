@@ -1,4 +1,4 @@
-use crate::{error::Error, markdown, servirtium_configuration::ServirtiumConfiguration};
+use crate::{error::Error, servirtium_configuration::ServirtiumConfiguration};
 use hyper::{
     body,
     header::{HeaderName, HeaderValue},
@@ -6,7 +6,6 @@ use hyper::{
     Body, HeaderMap, Request, Response, Server,
 };
 use lazy_static::lazy_static;
-use markdown::MarkdownData;
 use std::{
     collections::HashMap,
     convert::Infallible,
@@ -39,7 +38,7 @@ pub struct ServirtiumServer {
     join_handle: Option<JoinHandle<()>>,
     error: Option<Error>,
     interactions: Vec<InteractionData>,
-    markdown_data: Option<Vec<MarkdownData>>,
+    markdown_data: Option<Vec<InteractionData>>,
     interaction_number: u8,
 }
 
@@ -88,22 +87,24 @@ impl ServirtiumServer {
         let mut result = Ok(());
         let mut error = instance.error.take();
         let config = instance.configuration.as_ref().unwrap();
+        let interaction_manager = config.interaction_manager().clone();
 
         if error.is_none() && config.interaction_mode() == ServirtiumMode::Record {
-            let record_path = config.record_path();
-
             if instance
                 .configuration
                 .as_ref()
                 .unwrap()
                 .fail_if_markdown_changed()
-                && markdown::check_markdown_data_unchanged(record_path, &instance.interactions)?
+                && interaction_manager
+                    .check_data_unchanged(&instance.interactions)
+                    .map_err(|e| Error::MarkdownParseError(e))?
             {
                 error = Some(Error::MarkdownDataChanged);
             } else {
-                error = markdown::save_interactions(record_path, &instance.interactions)
+                error = interaction_manager
+                    .save_interactions(&instance.interactions)
                     .err()
-                    .map(|e| e.into());
+                    .map(|e| Error::MarkdownParseError(e));
             }
         }
 
@@ -181,10 +182,18 @@ impl ServirtiumServer {
     }
 
     fn handle_playback(&mut self) -> Result<Response<Body>, Error> {
+        let interaction_manager = self
+            .configuration
+            .as_mut()
+            .unwrap()
+            .interaction_manager()
+            .clone();
         if self.markdown_data.is_none() {
-            self.markdown_data = Some(markdown::load_markdown(
-                self.configuration.as_mut().unwrap().record_path(),
-            )?);
+            self.markdown_data = Some(
+                interaction_manager
+                    .load_interactions()
+                    .map_err(|e| Error::MarkdownParseError(e))?,
+            );
         } else {
             self.interaction_number += 1;
         }
@@ -195,11 +204,11 @@ impl ServirtiumServer {
         if let Some(headers_mut) = response_builder.headers_mut() {
             Self::put_headers(
                 headers_mut,
-                Self::filter_headers(&playback_data.response_headers),
+                Self::filter_headers(&playback_data.response_data.headers),
             )?;
         }
 
-        Ok(response_builder.body(playback_data.response_body.clone().into())?)
+        Ok(response_builder.body(playback_data.response_data.body.clone().into())?)
     }
 
     async fn handle_record(
@@ -214,6 +223,7 @@ impl ServirtiumServer {
         .await?;
 
         let interaction_data = InteractionData {
+            interaction_number: self.interaction_number,
             request_data,
             response_data,
         };
@@ -319,6 +329,7 @@ impl Drop for ServirtiumServer {
 
 #[derive(Debug, Clone)]
 pub struct InteractionData {
+    pub interaction_number: u8,
     pub request_data: RequestData,
     pub response_data: ResponseData,
 }

@@ -59,7 +59,11 @@ fn servirtium_test(
 
     let output = quote! {
         #signature {
-            let mut __servirtium_configuration = ServirtiumConfiguration::new(#enum_variant, #markdown_name);
+            let mut __servirtium_configuration = servirtium::ServirtiumConfiguration::new(
+                #enum_variant,
+                Box::new(servirtium::MarkdownInteractionManager::new(#markdown_name))
+            );
+
             #configuration_function(&mut __servirtium_configuration);
             servirtium::ServirtiumServer::before_test(__servirtium_configuration);
 

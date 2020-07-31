@@ -1,4 +1,3 @@
-use crate::markdown;
 use hyper::http;
 use std::{fmt::Display, io, sync};
 
@@ -16,7 +15,7 @@ pub enum Error {
     ParseUriError,
     HttpError(http::Error),
     MarkdownDataChanged,
-    MarkdownParseError(markdown::error::Error),
+    MarkdownParseError(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl std::error::Error for Error {}
@@ -47,12 +46,6 @@ impl Display for Error {
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         Error::IoError(e)
-    }
-}
-
-impl From<markdown::error::Error> for Error {
-    fn from(e: markdown::error::Error) -> Self {
-        Error::MarkdownParseError(e)
     }
 }
 
