@@ -41,11 +41,7 @@ impl TestSession {
         let interaction_manager = config.interaction_manager().clone();
 
         if error.is_none() && config.interaction_mode() == ServirtiumMode::Record {
-            if instance
-                .configuration
-                .as_ref()
-                .unwrap()
-                .fail_if_markdown_changed()
+            if config.fail_if_markdown_changed()
                 && interaction_manager
                     .check_data_unchanged(&instance.interactions)
                     .map_err(|e| Error::MarkdownParseError(e))?

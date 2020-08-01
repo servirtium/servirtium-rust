@@ -121,11 +121,16 @@ impl ServirtiumServer {
             )
             .await?;
 
-        let interaction_data = InteractionData {
+        let mut interaction_data = InteractionData {
             interaction_number: self.interaction_number,
             request_data: request_data.clone(),
             response_data,
         };
+
+        // Apply mutations
+        for mutation in config.record_mutations() {
+            mutation.mutate(&mut interaction_data);
+        }
 
         let mut response_builder =
             Response::builder().status(interaction_data.response_data.status_code);
