@@ -2,7 +2,7 @@ mod add_header_mutation;
 mod body_replace;
 mod remove_headers_mutation;
 
-use crate::InteractionData;
+use crate::{RequestData, ResponseData};
 use add_header_mutation::AddHeaderMutation;
 use body_replace::{BodyReplaceMutation, BodyReplaceRegexMutation};
 use regex::Regex;
@@ -23,197 +23,133 @@ enum MutationType {
     Headers(Box<dyn HeadersMutation + Send + Sync>),
 }
 
-#[derive(Debug, Copy, Clone)]
-enum InteractionDataType {
-    Request,
-    Response,
+#[derive(Debug)]
+pub struct RequestMutation {
+    mutation_type: MutationType,
+}
+
+impl RequestMutation {
+    fn from_mutation_type(mutation_type: MutationType) -> Self {
+        Self { mutation_type }
+    }
+
+    pub fn mutate(&self, request_data: &mut RequestData) {
+        match &self.mutation_type {
+            MutationType::Headers(hm) => {
+                hm.mutate(&mut request_data.headers);
+            }
+            MutationType::Body(bm) => {
+                bm.mutate(&mut request_data.body);
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
-pub struct Mutation {
+pub struct ResponseMutation {
     mutation_type: MutationType,
-    data_type: InteractionDataType,
 }
 
-impl Mutation {
-    fn from_headers_mutation<HM: HeadersMutation + Send + Sync + 'static>(
-        mutation: HM,
-        data_type: InteractionDataType,
-    ) -> Self {
-        Self {
-            mutation_type: MutationType::Headers(Box::new(mutation)),
-            data_type,
-        }
+impl ResponseMutation {
+    fn from_mutation_type(mutation_type: MutationType) -> Self {
+        Self { mutation_type }
     }
 
-    fn from_body_mutation<BM: BodyMutation + Send + Sync + 'static>(
-        mutation: BM,
-        data_type: InteractionDataType,
-    ) -> Self {
-        Self {
-            mutation_type: MutationType::Body(Box::new(mutation)),
-            data_type,
-        }
-    }
-
-    pub fn mutate(&self, interaction_data: &mut InteractionData) {
+    pub fn mutate(&self, response_data: &mut ResponseData) {
         match &self.mutation_type {
             MutationType::Headers(hm) => {
-                let headers = match self.data_type {
-                    InteractionDataType::Request => &mut interaction_data.request_data.headers,
-                    InteractionDataType::Response => &mut interaction_data.response_data.headers,
-                };
-
-                hm.mutate(headers);
+                hm.mutate(&mut response_data.headers);
             }
             MutationType::Body(bm) => {
-                let body = match self.data_type {
-                    InteractionDataType::Request => &mut interaction_data.request_data.body,
-                    InteractionDataType::Response => &mut interaction_data.response_data.body,
-                };
-
-                bm.mutate(body);
+                bm.mutate(&mut response_data.body);
             }
         }
     }
 }
 
-pub struct Mutations {
-    mutations: Vec<Mutation>,
+pub struct MutationsBuilder {
+    mutations: Vec<MutationType>,
 }
 
-impl Mutations {
-    pub fn new() -> Self {
+impl MutationsBuilder {
+    pub(crate) fn new() -> Self {
         Self {
             mutations: Vec::new(),
         }
     }
 
-    pub fn request<F: Fn(MutationBuilder) -> MutationBuilder>(self, func: F) -> Mutations {
-        let mutation_builder = MutationBuilder::new(self, InteractionDataType::Request);
-        let mutation_builder = func(mutation_builder);
-        mutation_builder.mutations
-    }
-
-    pub fn response<F: Fn(MutationBuilder) -> MutationBuilder>(self, func: F) -> Mutations {
-        let mutation_builder = MutationBuilder::new(self, InteractionDataType::Response);
-        let mutation_builder = func(mutation_builder);
-        mutation_builder.mutations
-    }
-
-    pub fn into_vec(self) -> Vec<Mutation> {
-        self.mutations
-    }
-}
-
-pub struct MutationBuilder {
-    data_type: InteractionDataType,
-    mutations: Mutations,
-}
-
-impl MutationBuilder {
-    fn new(mutations: Mutations, data_type: InteractionDataType) -> Self {
-        Self {
-            data_type,
-            mutations,
-        }
-    }
-
-    pub fn remove_headers<S: Into<String>, I: IntoIterator<Item = S>>(self, headers: I) -> Self {
+    pub fn remove_headers<S: Into<String>, I: IntoIterator<Item = S>>(
+        &mut self,
+        headers: I,
+    ) -> &mut Self {
         self.add_headers_mutation(RemoveHeadersMutation::new(headers))
     }
 
-    pub fn remove_headers_regex<I: IntoIterator<Item = Regex>>(self, patterns: I) -> Self {
+    pub fn remove_headers_regex<I: IntoIterator<Item = Regex>>(
+        &mut self,
+        patterns: I,
+    ) -> &mut Self {
         self.add_headers_mutation(RemoveHeadersRegexMutation::new(patterns))
     }
 
     pub fn add_header<S1: Into<String>, S2: Into<String>>(
-        self,
+        &mut self,
         header_name: S1,
         header_value: S2,
-    ) -> Self {
+    ) -> &mut Self {
         self.add_headers_mutation(AddHeaderMutation::new(header_name, header_value))
     }
 
     pub fn body_replace<S1: Into<String>, S2: Into<String>>(
-        self,
+        &mut self,
         text: S1,
         replacement: S2,
-    ) -> Self {
+    ) -> &mut Self {
         self.add_body_mutation(BodyReplaceMutation::new(text, replacement))
     }
 
-    pub fn body_replace_regex<S: Into<String>>(self, pattern: Regex, replacement: S) -> Self {
+    pub fn body_replace_regex<S: Into<String>>(
+        &mut self,
+        pattern: Regex,
+        replacement: S,
+    ) -> &mut Self {
         self.add_body_mutation(BodyReplaceRegexMutation::new(pattern, replacement))
     }
 
     pub fn add_headers_mutation<HM: HeadersMutation + Send + Sync + 'static>(
-        mut self,
+        &mut self,
         mutation: HM,
-    ) -> Self {
+    ) -> &mut Self {
         self.mutations
-            .mutations
-            .push(Mutation::from_headers_mutation(mutation, self.data_type));
+            .push(MutationType::Headers(Box::new(mutation)));
         self
     }
 
     pub fn add_body_mutation<BM: BodyMutation + Send + Sync + 'static>(
-        mut self,
+        &mut self,
         mutation: BM,
-    ) -> Self {
-        self.mutations
-            .mutations
-            .push(Mutation::from_body_mutation(mutation, self.data_type));
+    ) -> &mut Self {
+        self.mutations.push(MutationType::Body(Box::new(mutation)));
         self
+    }
+
+    pub fn into_response_mutations(self) -> Vec<ResponseMutation> {
+        self.mutations
+            .into_iter()
+            .map(ResponseMutation::from_mutation_type)
+            .collect()
+    }
+
+    pub fn into_request_mutations(self) -> Vec<RequestMutation> {
+        self.mutations
+            .into_iter()
+            .map(RequestMutation::from_mutation_type)
+            .collect()
     }
 }
 
-impl Default for Mutations {
+impl Default for MutationsBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
-
-// pub struct Mutations {
-//     mutations: Vec<Box<dyn Mutation + Send + Sync>>,
-// }
-
-// impl Mutations {
-//     pub fn new() -> Self {
-//         Self {
-//             mutations: Vec::new(),
-//         }
-//     }
-
-//     pub fn remove_request_headers<S: Into<String>, I: IntoIterator<Item = S>>(
-//         mut self,
-//         headers: I,
-//     ) -> Self {
-//         self.mutations.push(Box::new(RemoveHeadersMutation::new(
-//             headers,
-//             InteractionDataType::Request,
-//         )));
-//         self
-//     }
-
-//     pub fn remove_response_headers<S: Into<String>, I: IntoIterator<Item = S>>(
-//         mut self,
-//         headers: I,
-//     ) -> Self {
-//         self.mutations.push(Box::new(RemoveHeadersMutation::new(
-//             headers,
-//             InteractionDataType::Response,
-//         )));
-//         self
-//     }
-
-//     pub fn into_vec(self) -> Vec<Box<dyn Mutation + Send + Sync>> {
-//         self.mutations
-//     }
-// }
-
-// impl Default for Mutations {
-//     fn default() -> Self {
-//         Self::new()
-//     }
-// }

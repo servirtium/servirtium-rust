@@ -68,21 +68,18 @@ impl ServirtiumServer {
 
     pub(crate) async fn handle_request(
         &mut self,
-        mut request: RequestData,
+        request: RequestData,
     ) -> Result<ResponseData, Error> {
         match self.configuration.as_ref().unwrap().interaction_mode() {
             ServirtiumMode::Playback => self.handle_playback(),
-            ServirtiumMode::Record => self.handle_record(&mut request).await,
+            ServirtiumMode::Record => self.handle_record(request).await,
         }
     }
 
     fn handle_playback(&mut self) -> Result<ResponseData, Error> {
-        let interaction_manager = self
-            .configuration
-            .as_mut()
-            .unwrap()
-            .interaction_manager()
-            .clone();
+        let config = self.configuration.as_mut().unwrap();
+        let interaction_manager = config.interaction_manager().clone();
+
         if self.markdown_data.is_none() {
             self.markdown_data = Some(
                 interaction_manager
@@ -94,45 +91,55 @@ impl ServirtiumServer {
         }
 
         let playback_data = &self.markdown_data.as_ref().unwrap()[self.interaction_number as usize];
+
+        let mut response_data = playback_data.response_data.clone();
+
+        // mutate the response according to the configuration
+        for mutation in config.playback_response_mutations() {
+            mutation.mutate(&mut response_data);
+        }
+
         let mut response_builder = Response::builder();
 
         if let Some(headers_mut) = response_builder.headers_mut() {
-            Self::put_headers(
-                headers_mut,
-                Self::filter_headers(&playback_data.response_data.headers),
-            )?;
+            Self::put_headers(headers_mut, Self::filter_headers(&response_data.headers))?;
         }
 
-        Ok(playback_data.response_data.clone())
+        Ok(response_data)
     }
 
     async fn handle_record(
         &mut self,
-        request_data: &mut RequestData,
+        mut request_data: RequestData,
     ) -> Result<ResponseData, Error> {
         let config = self.configuration.as_mut().unwrap();
 
         let http_client = config.http_client();
 
-        Self::add_host_header(request_data, config)?;
+        Self::add_host_header(&mut request_data, config)?;
 
-        let response_data = http_client
+        // Mutate the request according to the configuration
+        for mutation in config.record_request_mutations() {
+            mutation.mutate(&mut request_data);
+        }
+
+        let mut response_data = http_client
             .make_request(
                 config.domain_name().ok_or(Error::NotConfigured)?,
-                request_data,
+                &request_data,
             )
             .await?;
 
-        let mut interaction_data = InteractionData {
+        // Mutate the response according to the configuration to write it to markdown
+        for mutation in config.record_response_mutations() {
+            mutation.mutate(&mut response_data);
+        }
+
+        let interaction_data = InteractionData {
             interaction_number: self.interaction_number,
-            request_data: request_data.clone(),
+            request_data,
             response_data,
         };
-
-        // Apply mutations
-        for mutation in config.record_mutations() {
-            mutation.mutate(&mut interaction_data);
-        }
 
         let mut response_builder =
             Response::builder().status(interaction_data.response_data.status_code);
@@ -141,9 +148,13 @@ impl ServirtiumServer {
             Self::put_headers(header_map, &interaction_data.response_data.headers)?;
         }
 
-        let response_data = interaction_data.response_data.clone();
-
+        let mut response_data = interaction_data.response_data.clone();
         self.interactions.push(interaction_data);
+
+        // Now mutate the actual response sent to the caller
+        for mutation in config.playback_response_mutations() {
+            mutation.mutate(&mut response_data);
+        }
 
         Ok(response_data)
     }

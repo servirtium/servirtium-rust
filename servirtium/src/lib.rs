@@ -14,7 +14,9 @@ pub use data::{InteractionData, RequestData, ResponseData};
 pub use http_client::{HttpClient, ReqwestHttpClient};
 pub use interaction_manager::InteractionManager;
 pub use markdown::MarkdownInteractionManager;
-pub use mutations::Mutations;
+pub use mutations::{
+    BodyMutation, HeadersMutation, MutationsBuilder, RequestMutation, ResponseMutation,
+};
 pub use servirtium_codegen::{servirtium_playback_test, servirtium_record_test};
 pub use servirtium_configuration::ServirtiumConfiguration;
 pub use servirtium_server::{ServirtiumMode, ServirtiumServer};
