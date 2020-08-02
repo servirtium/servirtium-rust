@@ -167,6 +167,7 @@ impl InteractionManager for MarkdownInteractionManager {
 
         Ok(())
     }
+
     fn check_data_unchanged(
         &self,
         interactions: &[InteractionData],

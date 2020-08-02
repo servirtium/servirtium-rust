@@ -42,7 +42,7 @@ impl TestSession {
 
         if error.is_none() && config.interaction_mode() == ServirtiumMode::Record {
             if config.fail_if_markdown_changed()
-                && interaction_manager
+                && !interaction_manager
                     .check_data_unchanged(&instance.interactions)
                     .map_err(|e| Error::MarkdownParseError(e))?
             {
