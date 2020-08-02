@@ -47,7 +47,7 @@ impl TestSession {
                     .map_err(|e| Error::MarkdownParseError(e))?
             {
                 error = Some(Error::MarkdownDataChanged);
-            } else {
+            } else if !instance.interactions.is_empty() {
                 error = interaction_manager
                     .save_interactions(&instance.interactions)
                     .err()
