@@ -1,9 +1,12 @@
 mod add_header_mutation;
+mod body_replace;
 mod remove_headers_mutation;
 
 use crate::InteractionData;
 use add_header_mutation::AddHeaderMutation;
-use remove_headers_mutation::RemoveHeadersMutation;
+use body_replace::{BodyReplaceMutation, BodyReplaceRegexMutation};
+use regex::Regex;
+use remove_headers_mutation::{RemoveHeadersMutation, RemoveHeadersRegexMutation};
 use std::{collections::HashMap, fmt::Debug};
 
 pub trait BodyMutation: Debug {
@@ -120,6 +123,10 @@ impl MutationBuilder {
         self.add_headers_mutation(RemoveHeadersMutation::new(headers))
     }
 
+    pub fn remove_headers_regex<I: IntoIterator<Item = Regex>>(self, patterns: I) -> Self {
+        self.add_headers_mutation(RemoveHeadersRegexMutation::new(patterns))
+    }
+
     pub fn add_header<S1: Into<String>, S2: Into<String>>(
         self,
         header_name: S1,
@@ -128,9 +135,21 @@ impl MutationBuilder {
         self.add_headers_mutation(AddHeaderMutation::new(header_name, header_value))
     }
 
-    pub fn add_headers_mutation<T: HeadersMutation + Send + Sync + 'static>(
+    pub fn body_replace<S1: Into<String>, S2: Into<String>>(
+        self,
+        text: S1,
+        replacement: S2,
+    ) -> Self {
+        self.add_body_mutation(BodyReplaceMutation::new(text, replacement))
+    }
+
+    pub fn body_replace_regex<S: Into<String>>(self, pattern: Regex, replacement: S) -> Self {
+        self.add_body_mutation(BodyReplaceRegexMutation::new(pattern, replacement))
+    }
+
+    pub fn add_headers_mutation<HM: HeadersMutation + Send + Sync + 'static>(
         mut self,
-        mutation: T,
+        mutation: HM,
     ) -> Self {
         self.mutations
             .mutations
@@ -138,9 +157,9 @@ impl MutationBuilder {
         self
     }
 
-    pub fn add_body_mutation<T: BodyMutation + Send + Sync + 'static>(
+    pub fn add_body_mutation<BM: BodyMutation + Send + Sync + 'static>(
         mut self,
-        mutation: T,
+        mutation: BM,
     ) -> Self {
         self.mutations
             .mutations
