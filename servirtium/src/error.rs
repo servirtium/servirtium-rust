@@ -36,7 +36,7 @@ impl Display for Error {
             Error::InvalidDomainName => write!(f, "Couldn't parse the domain name"),
             Error::MarkdownDataChanged => write!(
                 f,
-                "The request results are different from those stored in the existing markdown"
+                "The resulting markdown is different from the existing markdown"
             ),
             Error::MarkdownParseError(e) => write!(f, "Error parsing the markdown file: {}", e),
         }
