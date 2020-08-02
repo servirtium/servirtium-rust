@@ -5,9 +5,9 @@ use std::{fmt::Display, io, sync};
 pub enum Error {
     IoError(io::Error),
     PoisonedLock,
+    InvalidDomainName,
     InvalidStatusCode,
     NotConfigured,
-    ReqwestError(reqwest::Error),
     InvalidHeaderName,
     InvalidHeaderValue,
     InvalidBody,
@@ -27,13 +27,13 @@ impl Display for Error {
             Error::PoisonedLock => write!(f, "The lock was poisoned"),
             Error::InvalidStatusCode => write!(f, "The status code is invalid"),
             Error::NotConfigured => write!(f, "The server hasn't been configured"),
-            Error::ReqwestError(e) => write!(f, "reqwest error: {}", e),
             Error::InvalidHeaderName => write!(f, "Invalid header name"),
             Error::InvalidHeaderValue => write!(f, "Invalid header value"),
             Error::InvalidBody => write!(f, "Invalid body"),
             Error::HyperError(e) => write!(f, "Hyper error: {}", e),
             Error::ParseUriError => write!(f, "Parse URI Error"),
             Error::HttpError(e) => write!(f, "Http Error: {}", e),
+            Error::InvalidDomainName => write!(f, "Couldn't parse the domain name"),
             Error::MarkdownDataChanged => write!(
                 f,
                 "The request results are different from those stored in the existing markdown"
@@ -52,12 +52,6 @@ impl From<io::Error> for Error {
 impl<T> From<sync::PoisonError<T>> for Error {
     fn from(_: sync::PoisonError<T>) -> Self {
         Error::PoisonedLock
-    }
-}
-
-impl From<reqwest::Error> for Error {
-    fn from(e: reqwest::Error) -> Self {
-        Error::ReqwestError(e)
     }
 }
 

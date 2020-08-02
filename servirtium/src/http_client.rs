@@ -1,6 +1,7 @@
-use crate::{error::Error, RequestData, ResponseData};
+use crate::{error::Error, util, RequestData, ResponseData};
 use async_trait::async_trait;
-use hyper::HeaderMap;
+use hyper::{body, Body, HeaderMap, Request};
+use hyper_tls::HttpsConnector;
 use std::{collections::HashMap, fmt::Debug};
 
 #[async_trait]
@@ -34,16 +35,33 @@ impl ReqwestHttpClient {
 impl HttpClient for ReqwestHttpClient {
     async fn make_request(
         &self,
-        url: &str,
+        domain_name: &str,
         request_data: &RequestData,
     ) -> Result<ResponseData, Error> {
-        let url = format!("{}{}", &url, request_data.uri);
+        let url = format!("{}{}", domain_name, request_data.uri);
+        let mut request_builder = Request::builder()
+            .uri(url.as_str())
+            .method(request_data.method.as_str());
 
-        let response = reqwest::get(&url).await?;
+        if let Some(headers_mut) = request_builder.headers_mut() {
+            util::put_headers(
+                headers_mut,
+                request_data
+                    .headers
+                    .iter()
+                    .filter(|(header_name, _)| header_name.as_str() != "host"),
+            )?;
+        }
+
+        let request: Request<Body> = request_builder.body(request_data.body.clone().into())?;
+
+        let client = hyper::Client::builder().build(HttpsConnector::new());
+
+        let response = client.request(request).await?;
+
         let status_code = response.status().as_u16();
         let headers = Self::extract_headers(response.headers());
-
-        let body = response.bytes().await?;
+        let body = body::to_bytes(response.into_body()).await?;
 
         Ok(ResponseData {
             status_code,

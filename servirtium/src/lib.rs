@@ -8,6 +8,7 @@ mod runner;
 mod servirtium_configuration;
 mod servirtium_server;
 mod test_session;
+mod util;
 
 pub use data::{InteractionData, RequestData, ResponseData};
 pub use http_client::{HttpClient, ReqwestHttpClient};

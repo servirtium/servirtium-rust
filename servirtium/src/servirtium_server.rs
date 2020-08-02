@@ -4,7 +4,7 @@ use crate::{
 };
 use hyper::{
     header::{HeaderName, HeaderValue},
-    HeaderMap, Response,
+    HeaderMap, Response, Uri,
 };
 use lazy_static::lazy_static;
 use std::{
@@ -114,6 +114,8 @@ impl ServirtiumServer {
 
         let http_client = config.http_client();
 
+        Self::add_host_header(request_data, config)?;
+
         let response_data = http_client
             .make_request(
                 config.domain_name().ok_or(Error::NotConfigured)?,
@@ -174,6 +176,24 @@ impl ServirtiumServer {
         self.interaction_number = 0;
         self.markdown_data = None;
         self.error = None;
+    }
+
+    fn add_host_header(
+        request_data: &mut RequestData,
+        config: &ServirtiumConfiguration,
+    ) -> Result<(), Error> {
+        let domain_name_uri = config
+            .domain_name()
+            .unwrap()
+            .parse::<Uri>()
+            .map_err(|_| Error::InvalidDomainName)?;
+        let host = domain_name_uri.host().ok_or(Error::InvalidDomainName)?;
+
+        request_data
+            .headers
+            .insert(String::from("host"), String::from(host));
+
+        Ok(())
     }
 }
 
