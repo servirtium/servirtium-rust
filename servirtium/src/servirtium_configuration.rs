@@ -1,6 +1,6 @@
 use crate::{
-    http_client::HttpClient, interaction_manager::InteractionManager,
-    mutations::InteractionDataMutation, Mutations, ReqwestHttpClient, ServirtiumMode,
+    http_client::HttpClient, interaction_manager::InteractionManager, mutations::Mutation,
+    Mutations, ReqwestHttpClient, ServirtiumMode,
 };
 use std::sync::Arc;
 
@@ -11,8 +11,8 @@ pub struct ServirtiumConfiguration {
     fail_if_markdown_changed: bool,
     interaction_manager: Arc<dyn InteractionManager + Send + Sync>,
     http_client: Option<Arc<dyn HttpClient + Send + Sync>>,
-    record_mutations: Vec<Box<dyn InteractionDataMutation + Send + Sync>>,
-    playback_mutations: Vec<Box<dyn InteractionDataMutation + Send + Sync>>,
+    record_mutations: Vec<Mutation>,
+    playback_mutations: Vec<Mutation>,
 }
 
 impl ServirtiumConfiguration {
@@ -73,11 +73,11 @@ impl ServirtiumConfiguration {
         self.playback_mutations.extend(mutations.into_vec());
     }
 
-    pub fn record_mutations(&self) -> &[Box<dyn InteractionDataMutation + Send + Sync>] {
+    pub fn record_mutations(&self) -> &[Mutation] {
         &self.record_mutations
     }
 
-    pub fn playback_mutations(&self) -> &[Box<dyn InteractionDataMutation + Send + Sync>] {
+    pub fn playback_mutations(&self) -> &[Mutation] {
         &self.playback_mutations
     }
 }
