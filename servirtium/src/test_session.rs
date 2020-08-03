@@ -35,29 +35,33 @@ impl TestSession {
 
     pub fn after_test() -> Result<(), Error> {
         let mut instance = ServirtiumServer::instance();
-        let mut result = Ok(());
-        let mut error = TEST_SESSION.error.lock().unwrap().take();
-        let config = instance.configuration.as_ref().unwrap();
-        let interaction_manager = config.interaction_manager().clone();
 
-        if error.is_none() && config.interaction_mode() == ServirtiumMode::Record {
-            if config.fail_if_markdown_changed()
-                && !interaction_manager
-                    .check_data_unchanged(&instance.interactions)
-                    .map_err(|e| Error::MarkdownParseError(e))?
-            {
-                error = Some(Error::MarkdownDataChanged);
-            } else if !instance.interactions.is_empty() {
-                error = interaction_manager
-                    .save_interactions(&instance.interactions)
-                    .err()
-                    .map(|e| Error::MarkdownParseError(e));
+        let func = || {
+            if let Some(err) = TEST_SESSION.error.lock().unwrap().take() {
+                return Err(err);
             }
-        }
 
-        if let Some(error) = error {
-            result = Err(error);
-        }
+            let config = instance.configuration.as_ref().unwrap();
+            let interaction_manager = config.interaction_manager().clone();
+
+            if config.interaction_mode() == ServirtiumMode::Record {
+                if config.fail_if_markdown_changed() {
+                    interaction_manager
+                        .check_data_unchanged(&instance.interactions)
+                        .map_err(|e| Error::InteractionManagerError(e))?;
+                }
+
+                if !instance.interactions.is_empty() {
+                    interaction_manager
+                        .save_interactions(&instance.interactions)
+                        .map_err(|e| Error::InteractionManagerError(e))?;
+                }
+            }
+
+            Ok(())
+        };
+
+        let result = func();
 
         instance.reset();
         instance.release_instance();

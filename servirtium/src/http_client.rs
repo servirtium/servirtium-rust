@@ -62,10 +62,11 @@ impl HttpClient for ReqwestHttpClient {
         let status_code = response.status().as_u16();
         let headers = Self::extract_headers(response.headers());
         let body = body::to_bytes(response.into_body()).await?;
+        let body: String = String::from_utf8_lossy(&body).into();
 
         Ok(ResponseData {
             status_code,
-            body: String::from_utf8_lossy(&body).into(),
+            body,
             headers,
         })
     }
