@@ -1,10 +1,10 @@
 mod add_header_mutation;
-mod body_replace;
+mod body_replace_mutation;
 mod remove_headers_mutation;
 
 use crate::{RequestData, ResponseData};
 use add_header_mutation::AddHeaderMutation;
-use body_replace::{BodyReplaceMutation, BodyReplaceRegexMutation};
+use body_replace_mutation::{BodyReplaceMutation, BodyReplaceRegexMutation};
 use regex::Regex;
 use remove_headers_mutation::{RemoveHeadersMutation, RemoveHeadersRegexMutation};
 use std::{collections::HashMap, fmt::Debug};
