@@ -191,9 +191,26 @@ impl InteractionManager for MarkdownInteractionManager {
         let markdown_data = self.load_interactions()?;
 
         for (interaction_data, markdown_data) in interactions.iter().zip(markdown_data.iter()) {
-            if markdown_data.request_data.body.trim() != interaction_data.request_data.body.trim()
-                || markdown_data.response_data.body.trim()
-                    != interaction_data.response_data.body.trim()
+            let markdown_request_body =
+                markdown_data.request_data.body.trim().replace("\r\n", "\n");
+            let markdown_response_body = markdown_data
+                .response_data
+                .body
+                .trim()
+                .replace("\r\n", "\n");
+            let new_request_body = interaction_data
+                .request_data
+                .body
+                .trim()
+                .replace("\r\n", "\n");
+            let new_response_body = interaction_data
+                .response_data
+                .body
+                .trim()
+                .replace("\r\n", "\n");
+
+            if markdown_request_body != new_request_body
+                || markdown_response_body != new_response_body
                 || !Self::headers_equal(
                     &markdown_data.request_data.headers,
                     &interaction_data.request_data.headers,
