@@ -134,8 +134,16 @@ impl InteractionManager for MarkdownInteractionManager {
                 file,
                 "### Request headers recorded for playback:\r\n\r\n```\r\n"
             )?;
-            for (key, value) in &interaction.request_data.headers {
-                write!(file, "{}: {}\r\n", key, value)?;
+
+            let mut header_names = interaction.request_data.headers.keys().collect::<Vec<_>>();
+            header_names.sort();
+            for header_name in header_names {
+                write!(
+                    file,
+                    "{}: {}\r\n",
+                    header_name,
+                    interaction.request_data.headers.get(header_name).unwrap()
+                )?;
             }
             write!(file, "```\r\n\r\n")?;
 
@@ -148,8 +156,16 @@ impl InteractionManager for MarkdownInteractionManager {
                 file,
                 "### Response headers recorded for playback:\r\n\r\n```\r\n"
             )?;
-            for (key, value) in &interaction.response_data.headers {
-                writeln!(file, "{}: {}", key, value)?;
+
+            let mut header_names = interaction.response_data.headers.keys().collect::<Vec<_>>();
+            header_names.sort();
+            for header_name in header_names {
+                writeln!(
+                    file,
+                    "{}: {}",
+                    header_name,
+                    interaction.response_data.headers.get(header_name).unwrap()
+                )?;
             }
             write!(file, "```\r\n\r\n")?;
             write!(
