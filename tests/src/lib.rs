@@ -7,7 +7,7 @@ mod tests {
         config.set_domain_name("test");
     }
 
-    #[servirtium_playback_test("test1.md", configure_servirtium)]
+    #[servirtium_playback_test("test1.md", "test")]
     fn simple_playback_test() {
         println!("this test does nothing...");
     }

@@ -57,16 +57,31 @@ fn servirtium_test(
         .into();
     }
 
-    let configuration_function;
-    if let syn::NestedMeta::Meta(syn::Meta::Path(function_path)) = &args[1] {
-        configuration_function = function_path;
-    } else {
-        let error = quote! {
-            compile_error!("The second argument should be a configuration function!");
-        };
+    let mut configuration_function = None;
+    let mut domain_name = None;
+    match &args[1] {
+        syn::NestedMeta::Meta(syn::Meta::Path(function_path)) => {
+            configuration_function = Some(function_path);
+        }
+        syn::NestedMeta::Lit(syn::Lit::Str(domain_name_arg)) => {
+            domain_name = Some(domain_name_arg.value());
+        }
+        _ => {
+            let error = quote! {
+                compile_error!("The second argument should be a configuration function!");
+            };
 
-        return error.into();
-    }
+            return error.into();
+        }
+    };
+
+    let configure = if let Some(configuration_function) = configuration_function {
+        quote! { #configuration_function(&mut __servirtium_configuration); }
+    } else if let Some(domain_name) = domain_name {
+        quote! { __servirtium_configuration.set_domain_name(#domain_name); }
+    } else {
+        panic!("The configuration function and the domain name are unknown!");
+    };
 
     let test_attribute = if with_test_attribute {
         quote! { #[test] }
@@ -82,7 +97,7 @@ fn servirtium_test(
                 Box::new(servirtium::MarkdownInteractionManager::new(#markdown_name))
             );
 
-            #configuration_function(&mut __servirtium_configuration);
+            #configure
             servirtium::TestSession::before_test(__servirtium_configuration);
 
             if let Err(e) = std::panic::catch_unwind(|| {
