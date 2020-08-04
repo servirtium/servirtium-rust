@@ -12,5 +12,5 @@ pub trait InteractionManager: Debug {
     fn check_data_unchanged(
         &self,
         interactions: &[InteractionData],
-    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }

@@ -14,8 +14,7 @@ pub enum Error {
     HyperError(hyper::Error),
     ParseUriError,
     HttpError(http::Error),
-    MarkdownDataChanged,
-    MarkdownParseError(Box<dyn std::error::Error + Send + Sync>),
+    InteractionManagerError(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl std::error::Error for Error {}
@@ -34,11 +33,7 @@ impl Display for Error {
             Error::ParseUriError => write!(f, "Parse URI Error"),
             Error::HttpError(e) => write!(f, "Http Error: {}", e),
             Error::InvalidDomainName => write!(f, "Couldn't parse the domain name"),
-            Error::MarkdownDataChanged => write!(
-                f,
-                "The resulting markdown is different from the existing markdown"
-            ),
-            Error::MarkdownParseError(e) => write!(f, "Error parsing the markdown file: {}", e),
+            Error::InteractionManagerError(e) => write!(f, "Markdown manager error: {}", e),
         }
     }
 }

@@ -84,7 +84,7 @@ impl ServirtiumServer {
             self.markdown_data = Some(
                 interaction_manager
                     .load_interactions()
-                    .map_err(|e| Error::MarkdownParseError(e))?,
+                    .map_err(|e| Error::InteractionManagerError(e))?,
             );
         } else {
             self.interaction_number += 1;

@@ -1,11 +1,19 @@
 pub mod error;
 
 use crate::{interaction_manager::InteractionManager, InteractionData, RequestData, ResponseData};
-use error::Error;
+use error::{
+    Error, MarkdownsBodyDifference, MarkdownsDifferenceLocation, MarkdownsDifferenceType,
+    MarkdownsHeaderDifference,
+};
 use fs::File;
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::{collections::HashMap, fs, io::Write, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    io::Write,
+    path::PathBuf,
+};
 
 lazy_static! {
     static ref HEADER_REGEX: Regex =
@@ -50,23 +58,72 @@ impl MarkdownInteractionManager {
         headers
     }
 
-    fn headers_equal(lhs: &HashMap<String, String>, rhs: &HashMap<String, String>) -> bool {
-        if lhs.len() != rhs.len() {
-            return false;
+    fn check_headers(
+        lhs: &HashMap<String, String>,
+        rhs: &HashMap<String, String>,
+    ) -> Option<MarkdownsHeaderDifference> {
+        let left_keys = lhs.keys().collect::<HashSet<_>>();
+        let right_keys = rhs.keys().collect::<HashSet<_>>();
+        if let Some(&diff) = left_keys.difference(&right_keys).next() {
+            return Some(MarkdownsHeaderDifference {
+                header_name: diff.clone(),
+                old_header_value: lhs.get(diff).cloned(),
+                new_header_value: rhs.get(diff).cloned(),
+            });
         }
 
-        for (key, value) in lhs {
-            match rhs.get(key) {
-                Some(header) => {
-                    if header.trim() != value.trim() {
-                        return false;
-                    }
-                }
-                None => return false,
-            };
+        for key in left_keys {
+            let old_value = lhs.get(key).unwrap().trim();
+            let new_value = rhs.get(key).unwrap().trim();
+
+            if old_value != new_value {
+                return Some(MarkdownsHeaderDifference {
+                    header_name: key.clone(),
+                    old_header_value: Some(old_value.into()),
+                    new_header_value: Some(new_value.into()),
+                });
+            }
         }
 
-        true
+        None
+    }
+
+    fn find_difference(old_body: &str, new_body: &str) -> Option<MarkdownsBodyDifference> {
+        let mut line = 0;
+        let mut column = 1;
+        for (index, (left, right)) in old_body.chars().zip(new_body.chars()).enumerate() {
+            if left == '\n' {
+                line += 1;
+                column = 1;
+            } else {
+                column += 1;
+            }
+
+            if left != right {
+                return Some(MarkdownsBodyDifference {
+                    line,
+                    column,
+                    old_context: Self::get_context(old_body, index).into(),
+                    new_context: Self::get_context(new_body, index).into(),
+                });
+            }
+        }
+
+        None
+    }
+
+    fn get_context(body: &str, index: usize) -> &str {
+        const RADIUS: usize = 10;
+
+        let left_bound = if index >= RADIUS { index - RADIUS } else { 0 };
+
+        let right_bound = if index + RADIUS < body.len() {
+            index + RADIUS
+        } else {
+            body.len() - 1
+        };
+
+        &body[left_bound..right_bound]
     }
 }
 
@@ -187,7 +244,7 @@ impl InteractionManager for MarkdownInteractionManager {
     fn check_data_unchanged(
         &self,
         interactions: &[InteractionData],
-    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let markdown_data = self.load_interactions()?;
 
         for (interaction_data, markdown_data) in interactions.iter().zip(markdown_data.iter()) {
@@ -209,21 +266,39 @@ impl InteractionManager for MarkdownInteractionManager {
                 .trim()
                 .replace("\r\n", "\n");
 
-            if markdown_request_body != new_request_body
-                || markdown_response_body != new_response_body
-                || !Self::headers_equal(
-                    &markdown_data.request_data.headers,
-                    &interaction_data.request_data.headers,
-                )
-                || !Self::headers_equal(
+            if let Some((difference, location)) =
+                Self::find_difference(&markdown_request_body, &new_request_body)
+                    .map(|d| (d, MarkdownsDifferenceLocation::Request))
+                    .or_else(|| {
+                        Self::find_difference(&markdown_response_body, &new_response_body)
+                            .map(|d| (d, MarkdownsDifferenceLocation::Response))
+                    })
+            {
+                return Err(Box::new(Error::MarkdownsDiffer(
+                    MarkdownsDifferenceType::Body(difference),
+                    location,
+                )));
+            }
+
+            if let Some((difference, location)) = Self::check_headers(
+                &markdown_data.request_data.headers,
+                &interaction_data.request_data.headers,
+            )
+            .map(|d| (d, MarkdownsDifferenceLocation::Request))
+            .or_else(|| {
+                Self::check_headers(
                     &markdown_data.response_data.headers,
                     &interaction_data.response_data.headers,
                 )
-            {
-                return Ok(false);
+                .map(|d| (d, MarkdownsDifferenceLocation::Response))
+            }) {
+                return Err(Box::new(Error::MarkdownsDiffer(
+                    MarkdownsDifferenceType::Header(difference),
+                    location,
+                )));
             }
         }
 
-        Ok(true)
+        Ok(())
     }
 }
