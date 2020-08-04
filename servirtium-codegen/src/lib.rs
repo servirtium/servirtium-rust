@@ -5,19 +5,30 @@ use quote::quote_spanned;
 use std::path::Path;
 
 #[proc_macro_attribute]
+pub fn servirtium_record(attrs: TokenStream, item: TokenStream) -> TokenStream {
+    servirtium_test(attrs, item, quote! { servirtium::ServirtiumMode::Record }, false)
+}
+
+#[proc_macro_attribute]
+pub fn servirtium_playback(attrs: TokenStream, item: TokenStream) -> TokenStream {
+    servirtium_test(attrs, item, quote! { servirtium::ServirtiumMode::Playback }, false)
+}
+
+#[proc_macro_attribute]
 pub fn servirtium_record_test(attrs: TokenStream, item: TokenStream) -> TokenStream {
-    servirtium_test(attrs, item, quote! { servirtium::ServirtiumMode::Record })
+    servirtium_test(attrs, item, quote! { servirtium::ServirtiumMode::Record }, true)
 }
 
 #[proc_macro_attribute]
 pub fn servirtium_playback_test(attrs: TokenStream, item: TokenStream) -> TokenStream {
-    servirtium_test(attrs, item, quote! { servirtium::ServirtiumMode::Playback })
+    servirtium_test(attrs, item, quote! { servirtium::ServirtiumMode::Playback }, true)
 }
 
 fn servirtium_test(
     attrs: TokenStream,
     item: TokenStream,
     enum_variant: proc_macro2::TokenStream,
+    with_test_attribute: bool
 ) -> TokenStream {
     let input = syn::parse_macro_input!(item as syn::ItemFn);
     let args = syn::parse_macro_input!(attrs as syn::AttributeArgs);
@@ -57,7 +68,14 @@ fn servirtium_test(
         return error.into();
     }
 
+    let test_attribute = if with_test_attribute {
+        quote! { #[test] }
+    } else {
+        quote! {}
+    };
+
     let output = quote! {
+        #test_attribute
         #signature {
             let mut __servirtium_configuration = servirtium::ServirtiumConfiguration::new(
                 #enum_variant,
