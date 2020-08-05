@@ -89,8 +89,8 @@ impl MarkdownInteractionManager {
     }
 
     fn find_difference(old_body: &str, new_body: &str) -> Option<MarkdownsBodyDifference> {
-        let mut line = 0;
-        let mut column = 1;
+        let mut line = 1;
+        let mut column = 0;
         for (index, (left, right)) in old_body.chars().zip(new_body.chars()).enumerate() {
             if left == '\n' {
                 line += 1;
