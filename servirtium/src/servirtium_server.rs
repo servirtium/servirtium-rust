@@ -84,7 +84,7 @@ impl ServirtiumServer {
             self.markdown_data = Some(
                 interaction_manager
                     .load_interactions()
-                    .map_err(|e| Error::InteractionManagerError(e))?,
+                    .map_err(|e| Error::InteractionManager(e))?,
             );
         } else {
             self.interaction_number += 1;
@@ -174,7 +174,7 @@ impl ServirtiumServer {
 
     fn filter_headers<'a>(
         headers: &'a HashMap<String, String>,
-    ) -> impl Iterator<Item = (&'a String, &'a String)> + 'a {
+    ) -> impl Iterator<Item = (&'_ String, &'_ String)> + 'a {
         headers
             .iter()
             // Transfer-Encoding: chunked shouldn't be included in local tests because all the data is
